@@ -51,13 +51,15 @@ npm install dsh-claude-code
 | `cwd` | DSH cwd | Claude Code 工作目录 |
 | `allowedTools` | 未设 | 允许的 Claude Code 内置工具名列表 |
 | `pathToClaudeCodeExecutable` | 自动 | `claude` 可执行文件路径 |
+| `effort` | `high` | 思考强度：`low`/`medium`/`high`/`xhigh`/`max` |
+| `maxThinkingTokens` | 未设 | 思考 token 预算上限 |
 
 ## 工具参数（模型可见）
 
 | 参数 | 说明 |
 |---|---|
 | `task`（必填） | 自包含任务描述（目标、文件、约束、验收） |
-| `cwd` / `model` / `permissionMode` / `maxTurns` / `allowedTools` | 覆盖插件配置 |
+| `cwd` / `model` / `permissionMode` / `maxTurns` / `allowedTools` / `effort` / `maxThinkingTokens` | 覆盖插件配置 |
 | `resume` | 传上次返回的 `sessionId`，续接那个 Claude Code 会话（记住之前的上下文） |
 
 返回：最终结果文本 + `sessionId` + token 用量 + 费用 + 用到的工具。

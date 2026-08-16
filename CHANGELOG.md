@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.2
+- Add `effort` (low/medium/high/xhigh/max) and `maxThinkingTokens` — config + per-call override.
+
+## 0.1.1
 - Add `dsh.bundle` manifest + `cordis.patch.yml` so the plugin installs via `dsh plugin add`.
 - Ship `cordis.patch.yml` in the npm tarball.
 

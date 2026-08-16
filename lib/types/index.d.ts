@@ -10,6 +10,8 @@ export interface Config {
     cwd?: string;
     allowedTools?: string[];
     pathToClaudeCodeExecutable?: string;
+    effort?: string;
+    maxThinkingTokens?: number;
 }
 export declare const Config: z<Config>;
 export declare function apply(ctx: Context, config: Config): void;

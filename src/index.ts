@@ -15,6 +15,8 @@ export interface Config {
   cwd?: string
   allowedTools?: string[]
   pathToClaudeCodeExecutable?: string
+  effort?: string
+  maxThinkingTokens?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -27,6 +29,8 @@ export const Config: z<Config> = z.object({
   cwd: z.string().description('Working directory for Claude Code; defaults to the DSH workspace cwd.'),
   allowedTools: z.array(z.string()).description('Claude Code built-in tools to allow.'),
   pathToClaudeCodeExecutable: z.string().description('Path to the claude executable; auto-detected when omitted.'),
+  effort: z.string().description('Thinking effort: low, medium, high, xhigh, or max.').default('high'),
+  maxThinkingTokens: z.number().description('Optional thinking token budget per task.'),
 })
 
 const PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk'] as const
@@ -67,7 +71,7 @@ const DELEGATION_SKILL: SkillRegistration = {
     '- 琐碎小问不派；一个"完整子任务"才派。',
     '',
     '## 参数覆盖',
-    '- cwd（工作目录）、model（sonnet/opus/haiku）、permissionMode（默认 acceptEdits）、maxTurns、resume。',
+    '- cwd（工作目录）、model（sonnet/opus/haiku）、permissionMode（默认 acceptEdits）、maxTurns、effort（思考强度 low/medium/high/xhigh/max）、maxThinkingTokens、resume。',
     '',
     '## 插件维护（改 dsh-claude-code 本身）',
     '- 改完源码：npm run build，再按安装方式重新部署（本地：cp -R 覆盖 profile node_modules 下的 dsh-claude-code），最后重启 dsh。',
@@ -92,6 +96,8 @@ async function runClaude(task: string, opts: {
   allowedTools?: string[]
   pathToClaudeCodeExecutable?: string
   resume?: string
+  effort?: string
+  maxThinkingTokens?: number
   abort: AbortController
 }): Promise<RunOutcome> {
   let output = ''
@@ -112,6 +118,8 @@ async function runClaude(task: string, opts: {
       allowedTools: opts.allowedTools,
       pathToClaudeCodeExecutable: opts.pathToClaudeCodeExecutable,
       resume: opts.resume,
+      effort: opts.effort as any,
+      maxThinkingTokens: opts.maxThinkingTokens,
       abortController: opts.abort,
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'dsh-claude-code/0.1.0' },
     },
@@ -165,7 +173,8 @@ export function apply(ctx: Context, config: Config) {
       "and return its final result text. Use it for a well-scoped subtask that benefits from Claude Code's own " +
       "agent loop and tools; give it everything it needs (goal, files, constraints) in the task string. " +
       "To continue a previous delegation with its remembered context, pass the sessionId you received earlier " +
-      "as resume. This is a slow, expensive call; prefer it only when the work is genuinely self-contained.",
+      "as resume. Override the Claude model (model) and thinking effort (effort: low/medium/high/xhigh/max) per call. " +
+      "This is a slow, expensive call; prefer it only when the work is genuinely self-contained.",
     parameters: {
       task: {
         type: 'string',
@@ -188,6 +197,15 @@ export function apply(ctx: Context, config: Config) {
       resume: {
         type: 'string',
         description: 'sessionId returned by an earlier claude_code call; resume that Claude Code session so it remembers its previous work. Omit for a fresh session.',
+      },
+      effort: {
+        type: 'string',
+        enum: ['low', 'medium', 'high', 'xhigh', 'max'],
+        description: "Override Claude Code thinking effort for this call (high is the default).",
+      },
+      maxThinkingTokens: {
+        type: 'integer',
+        description: 'Override the thinking token budget for this call.',
       },
     },
     output: {
@@ -220,6 +238,8 @@ export function apply(ctx: Context, config: Config) {
           allowedTools: args.allowedTools ?? config.allowedTools,
           pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable,
           resume: args.resume,
+          effort: args.effort ?? config.effort,
+          maxThinkingTokens: args.maxThinkingTokens ?? config.maxThinkingTokens,
           abort,
         })
         return {
