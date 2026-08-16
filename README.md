@@ -11,18 +11,19 @@
 ## 安装（用户侧）
 
 ```bash
-# 1. 装进 DSH profile
+# 方式一（最简单，自动接线）：通过 dsh 插件命令安装
+dsh plugin --profile web add dsh-claude-code
+
+# 方式二：手动装进 profile
 cd ~/.dsh/profiles
 npm install dsh-claude-code
-# 或者本地开发：npm link dsh-claude-code
-
-# 2. 接线：在 ~/.dsh/profiles/<你的profile>/cordis.patch.yml 里加上
+# 然后在 ~/.dsh/profiles/<你的profile>/cordis.patch.yml 里加上：
 # - insert:
 #     - id: claude-code
 #       name: 'dsh-claude-code'
-
-# 3. 重启 dsh
 ```
+
+装完重启 dsh。插件自带 `cordis.patch.yml`（`dsh.bundle` manifest），`dsh plugin add` 会用它自动接线。
 
 接线示例（带配置）：
 
