@@ -1,0 +1,9 @@
+# 示例：合并进 ~/.dsh/profiles/web/cordis.patch.yml
+- insert:
+    - id: claude-code
+      name: 'dsh-claude-code'
+      config:
+        model: sonnet
+        permissionMode: acceptEdits
+        maxTurns: 100
+        timeoutMs: 600000
