@@ -1,6 +1,6 @@
 {
   "name": "dsh-claude-code",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DSH tool plugin: delegate a self-contained task to your local Claude Code subscription (via the official Claude Agent SDK).",
   "type": "module",
   "main": "lib/index.js",
