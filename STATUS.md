@@ -38,6 +38,9 @@
   - 任务书：SPEC-0.2.0.md
 
 ## 待办
+- [ ] **0.3.0 候选：后台任务 UI 面板**——可行性评估与完整设计已写入 `DESIGN-0.3.0-jobs-ui.md`
+      （结论：可行；状态走宿主 jobsBySession 镜像免费推送，输出/取消走插件自有 remote API
+      绕开单游标与 kill-reported 两个 seam 坑；需求原文截断，实现前先确认文档 §9 开放问题）
 - [ ] **重启 DSH 桌面**后 0.2.0 生效（用户操作；重启后 claude_code 工具带全部新能力）
 - [ ] 实跑一次后台任务（run_in_background: true + job_output 增量读取）确认 jobs 集成符合预期（Claude Code 自述未实测）
 - [ ] 可选：git push + npm publish 0.2.0（需 npm login）

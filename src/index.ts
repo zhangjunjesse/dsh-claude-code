@@ -6,11 +6,14 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDefinition, Options } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { JobTracker, type TrackedSettlement } from './tracker.js'
+import { ClaudeCodeRemote } from './remote.js'
+import { DEFAULT_STALE_AFTER_MINUTES, readUsageSnapshot, renderUsage } from './usage.js'
 
 export const name = 'claude-code'
 export const inject = ['tools', 'skills']
 
-const CLIENT_APP = 'dsh-claude-code/0.2.0'
+const CLIENT_APP = 'dsh-claude-code/0.3.0'
 
 /** Cap for the live-output buffers kept per background job. */
 const MAX_LIVE_BUFFER = 500_000
@@ -120,6 +123,12 @@ const DELEGATION_SKILL: SkillRegistration = {
     '- 用 DSH 自带的 job_output 增量读取 Claude Code 的实时输出（每次只给上次之后的新内容），job_list 看在跑的任务，job_kill 取消。',
     '- 任务结束时 DSH 会自动推送完成通知，不需要轮询。',
     '- 短任务（几十秒内）直接前台调用即可，前台会把最终文本一次性返回。',
+    '- Web 端还有个「Claude Code」监控面板（会话头第三个标签页）：任务列表 + 终端式实时输出 + 取消，人类用户可以自己盯，你不用替他转述实时输出。',
+    '',
+    '## 派活前看额度（claude_code_usage）',
+    '- 纯本地读缓存，零 token、毫秒级：拿到 5 小时 / 7 天窗口用量、重置时间、订阅档位和一个 advice（normal / caution / blocked）。',
+    '- advice 是 caution 就少派、别并发；是 blocked 就先别派，告诉用户重置时间。',
+    '- 数据是 claude CLI 的缓存，每次委派后会自动刷新；显示 maybeStale 时按"可能偏低"看待。',
     '',
     '## 参数覆盖',
     '- cwd（工作目录）、model（sonnet/opus/haiku）、permissionMode（default/acceptEdits/bypassPermissions/plan/dontAsk/auto，默认 acceptEdits）、maxTurns、effort（思考强度 low/medium/high/xhigh/max）、resume。',
@@ -424,27 +433,47 @@ async function runClaude(
   }
 }
 
-/** Append-only text buffer that drops the oldest content once it exceeds the cap. */
+/**
+ * Append-only text buffer that drops the oldest content once it exceeds the cap.
+ *
+ * Two independent cursors live on top of it: `drain()` is the model's
+ * `job_output` cursor (read-and-clear), while `read(fromOffset)` answers the
+ * monitor panel from an ABSOLUTE offset, so any number of UI readers can follow
+ * the same job without ever stealing the model's bytes. `absoluteBase` is the
+ * absolute index of the first character still held.
+ */
 function createBuffer() {
   let text = ''
   let dropped = false
+  let absoluteBase = 0
   return {
     append(chunk: string) {
       text += chunk
       if (text.length > MAX_LIVE_BUFFER) {
-        text = text.slice(text.length - MAX_LIVE_BUFFER)
+        const excess = text.length - MAX_LIVE_BUFFER
+        text = text.slice(excess)
+        absoluteBase += excess
         dropped = true
       }
     },
     /** Read and clear; the caller sees only what arrived since the previous read. */
     drain() {
       const chunk = dropped ? `…[earlier output truncated]…\n${text}` : text
+      absoluteBase += text.length
       text = ''
       dropped = false
       return chunk
     },
     snapshot() {
       return dropped ? `…[earlier output truncated]…\n${text}` : text
+    },
+    /** Absolute-offset read used by the monitor panel; leaves the buffer intact. */
+    read(fromOffset: number) {
+      const end = absoluteBase + text.length
+      const requested = Math.max(0, Math.min(fromOffset, end))
+      const truncated = requested < absoluteBase
+      const start = truncated ? absoluteBase : requested
+      return { text: text.slice(start - absoluteBase), nextOffset: end, truncated }
     },
   }
 }
@@ -455,9 +484,27 @@ interface JobOutcome {
   output?: string
 }
 
-function startBackgroundJob(jobs: any, req: RunRequest, timeoutMs: number, owner: unknown): string {
+/** Everything the tracker needs from inside the job's `run()` closure. */
+interface JobHandles {
+  read(fromOffset: number): { text: string, nextOffset: number, truncated: boolean }
+  cancelFromUi(): boolean
+  done: Promise<JobOutcome>
+  settlement(): TrackedSettlement
+}
+
+function startBackgroundJob(
+  jobs: any,
+  req: RunRequest,
+  timeoutMs: number,
+  owner: { id?: string } | undefined,
+  tracker: JobTracker,
+): string {
   const label = req.task.replace(/\s+/g, ' ').trim().slice(0, 60)
-  return jobs.start({
+  // `run()` executes synchronously inside `jobs.start()`, so these handles are
+  // set by the time the registry hands back the job id.
+  let handles: JobHandles | undefined
+
+  const jobId: string = jobs.start({
     kind: 'claude-code',
     label,
     owner,
@@ -466,29 +513,58 @@ function startBackgroundJob(jobs: any, req: RunRequest, timeoutMs: number, owner
       const pending = createBuffer()
       const full = createBuffer()
       let cancelled = false
+      let cancelledFromUi = false
       let timedOut = false
+      let settled = false
       let timer: ReturnType<typeof setTimeout> | undefined
+      let settlement: TrackedSettlement = { status: 'failed' }
 
       const onDelta = (text: string) => {
         pending.append(text)
         full.append(text)
       }
 
+      const cancel = (fromUi: boolean) => {
+        if (settled || cancelled) return false
+        cancelled = true
+        cancelledFromUi = fromUi
+        if (timer) clearTimeout(timer)
+        abort.abort('cancelled')
+        return true
+      }
+
       const done: Promise<JobOutcome> = (async () => {
         try {
           const outcome = await runClaude(req, abort, onDelta)
+          const cost = typeof outcome.costUsd === 'number' ? `$${outcome.costUsd.toFixed(2)}` : '$0.00'
+          const mins = Math.floor(outcome.durationMs / 60000)
+          const secs = Math.floor((outcome.durationMs % 60000) / 1000)
+          settlement = {
+            status: 'completed',
+            claudeSessionId: outcome.sessionId,
+            costUsd: outcome.costUsd,
+            numTurns: outcome.numTurns,
+            durationMs: outcome.durationMs,
+            finalOutput: outcome.output,
+          }
           return {
             status: 'completed' as const,
-            detail: `turns: ${outcome.numTurns}, duration: ${outcome.durationMs}ms`,
+            detail: `${cost} · ${outcome.numTurns} turns · ${mins}m${secs}s`,
             output: outcome.output,
           }
         } catch (err) {
-          if (cancelled) return { status: 'killed' as const, detail: 'cancelled' }
-          if (timedOut) {
-            return { status: 'failed' as const, detail: `timed out after ${timeoutMs}ms`, output: full.snapshot() }
+          if (cancelled) {
+            // UI cancellation goes through this same path on purpose: the job
+            // settles normally, so the model still receives its notification.
+            const detail = cancelledFromUi ? 'cancelled by user (UI)' : 'cancelled'
+            settlement = { status: 'killed', failureDetail: detail, finalOutput: full.snapshot() }
+            return { status: 'killed' as const, detail }
           }
-          return { status: 'failed' as const, detail: errorText(err), output: full.snapshot() }
+          const detail = timedOut ? `timed out after ${timeoutMs}ms` : errorText(err)
+          settlement = { status: 'failed', failureDetail: detail, finalOutput: full.snapshot() }
+          return { status: 'failed' as const, detail, output: full.snapshot() }
         } finally {
+          settled = true
           if (timer) clearTimeout(timer)
         }
       })()
@@ -501,21 +577,106 @@ function startBackgroundJob(jobs: any, req: RunRequest, timeoutMs: number, owner
         timer.unref?.()
       }
 
+      handles = {
+        read: (fromOffset: number) => full.read(fromOffset),
+        cancelFromUi: () => cancel(true),
+        done,
+        settlement: () => settlement,
+      }
+
       return {
-        cancel: () => {
-          cancelled = true
-          if (timer) clearTimeout(timer)
-          abort.abort('cancelled')
-        },
+        cancel: () => { cancel(false) },
         done,
         readOutput: () => pending.drain(),
       }
     },
   })
+
+  if (handles) {
+    const resolved = handles
+    tracker.register({
+      jobId,
+      ...(owner?.id !== undefined ? { ownerSessionId: owner.id } : {}),
+      task: req.task,
+      label,
+      read: resolved.read,
+      cancelFromUi: resolved.cancelFromUi,
+    })
+    resolved.done.then(
+      () => tracker.settle(jobId, resolved.settlement()),
+      (err: unknown) => tracker.settle(jobId, { status: 'failed', failureDetail: errorText(err) }),
+    )
+  }
+
+  return jobId
 }
 
 export function apply(ctx: Context, config: Config) {
   ctx.skills.register(DELEGATION_SKILL)
+
+  // Plugin-owned mirror of this session's delegations, plus the RPC surface the
+  // monitor panel (client half) reads it through. Both are process-local and go
+  // away with the plugin's fiber.
+  const tracker = new JobTracker()
+  new ClaudeCodeRemote(ctx, tracker)
+
+  ctx.tools.register(defineTool({
+    name: 'claude_code_usage',
+    description:
+      "Read the local Claude subscription's usage quota (5-hour and 7-day rolling windows, reset times, " +
+      "per-limit severities, plan tier) so you can decide whether another claude_code delegation is safe right now. " +
+      "The data comes from the claude CLI's own cache in ~/.claude.json — reading it is free, local and instant, " +
+      "but it is a cache: every claude_code delegation refreshes it, so it is freshest right after one finishes. " +
+      "No credentials are ever read and no account identity is returned.",
+    parameters: {
+      staleAfterMinutes: {
+        type: 'integer',
+        description: 'Mark the cached data as possibly stale once it is older than this many minutes (default 30).',
+      },
+      forceRefresh: {
+        type: 'boolean',
+        description: 'Reserved: actively refreshing would burn real quota, so it is not supported yet and only adds a warning.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          ok: { type: 'boolean', description: 'True when a usage snapshot could be read.' },
+          loggedIn: { type: 'boolean', description: 'Whether the local claude CLI is currently logged in.' },
+          error: { type: 'string', description: 'Actionable failure reason; present only when ok is false.' },
+          subscription: { type: 'json', description: 'Plan descriptors: { type, rateLimitTier, billingType }.' },
+          fiveHour: { type: 'json', description: 'Five-hour window: { utilizationPercent, resetsAt }.' },
+          sevenDay: { type: 'json', description: 'Seven-day window: { utilizationPercent, resetsAt }.' },
+          limits: { type: 'json', description: 'Per-limit rows: { kind, group, percent, severity, resetsAt, scopeModel, isActive }.' },
+          spend: { type: 'json', description: 'Dollar spend block; disabled on subscription accounts.' },
+          extraUsage: { type: 'json', description: 'Extra-usage credits: { isEnabled, disabledReason }.' },
+          cache: { type: 'json', description: 'Cache freshness: { fetchedAt, ageMinutes, maybeStale, source }.' },
+          advice: {
+            type: 'string',
+            enum: ['normal', 'caution', 'blocked', 'unknown'],
+            description: 'Derived signal: normal, caution (any window >= 80%), blocked (>= 95% or a non-normal severity), unknown.',
+          },
+          warnings: { type: 'array', items: { type: 'string' }, description: 'Degradation notes (stale cache, missing fields, login expired).' },
+        },
+      },
+      render: (_args: any, value: any) => [{ type: 'text', text: renderUsage(value) }],
+    },
+    async execute(args: any) {
+      return readUsageSnapshot({
+        staleAfterMinutes: typeof args.staleAfterMinutes === 'number' ? args.staleAfterMinutes : DEFAULT_STALE_AFTER_MINUTES,
+        forceRefresh: args.forceRefresh === true,
+        ...(config.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable } : {}),
+      }) as any
+    },
+    presentCall: () => ({
+      card: 'generic',
+      title: 'Claude 订阅额度',
+      kind: 'other',
+      rawInput: {},
+    }),
+  }))
 
   ctx.tools.register(defineTool({
     name: 'claude_code',
@@ -651,7 +812,7 @@ export function apply(ctx: Context, config: Config) {
       if (args.run_in_background) {
         const jobs = ctx.get('jobs')
         if (!jobs) throw new Error('background jobs unavailable: load @deepseek-ai/dsh-tool-jobs')
-        const jobId = startBackgroundJob(jobs, req, config.timeoutMs, exec.agent)
+        const jobId = startBackgroundJob(jobs, req, config.timeoutMs, exec.agent as { id?: string } | undefined, tracker)
         return { kind: 'background' as const, jobId }
       }
 

@@ -8,6 +8,8 @@
 - 内置 **claude-code-delegation skill**（Leader-Worker 委派 SOP），装好即出现在技能目录。
 - 支持 **resume** 跨轮记忆：把上次返回的 `sessionId` 传回，Claude Code 会记住之前的上下文，适合多轮迭代。
 - 支持 **后台异步任务**：`run_in_background: true` 立即返回 `jobId`，用 DSH 自带的 `job_output` 流式读取实时输出。
+- 内置 **Claude Code 监控面板**：会话头「对话 / 轨迹」右边多一个 **Claude Code** 标签页，任务列表 + 终端式实时输出 + 一键取消（Web 端）。
+- 内置 **claude_code_usage 工具**：读本机 Claude 订阅额度（5 小时 / 7 天窗口、重置时间、订阅档位），派活前先看一眼。
 - 支持 **结构化输出**（`outputSchema`）、**成本上限**（`maxBudgetUsd`）、**追加系统提示**（`appendSystemPrompt`）与**自定义 subagents**。
 
 ## 安装（用户侧）
@@ -74,7 +76,14 @@ npm install dsh-claude-code
 | `proxy` | 未设 | 给 claude 子进程设置的 HTTP 代理（如 `http://127.0.0.1:7897`），写入其 `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`；出网 IP 是数据中心 IP、Anthropic 返回 403 时用它 |
 | `subagents` | 未设 | 自定义 subagent 表：名称 → `{ description, prompt, tools?, disallowedTools?, model?, maxTurns?, initialPrompt?, background? }`，注册到 Claude Code 的 Agent 工具 |
 
-## 工具参数（模型可见）
+## 工具一览（模型可见）
+
+| 工具 | 说明 |
+|---|---|
+| `claude_code` | 把一个自包含编码任务委派给本机 Claude Code；前台返回最终文本，`run_in_background: true` 返回 `jobId` |
+| `claude_code_usage` | 读本机 Claude 订阅额度（5 小时 / 7 天窗口百分比、重置时间、各 limit 严重度、订阅档位），纯本地读取、零 token、毫秒级 |
+
+### `claude_code` 参数
 
 | 参数 | 说明 |
 |---|---|
@@ -89,6 +98,17 @@ npm install dsh-claude-code
 | `proxy` | 本次调用用的 HTTP 代理（覆盖插件配置的 `proxy`） |
 
 返回：最终结果文本 + `sessionId` + token 用量 + 费用 + 用到的工具 + `durationMs` / `numTurns`（有 `outputSchema` 时还有 `structuredOutput`）。
+
+### `claude_code_usage` 参数
+
+| 参数 | 说明 |
+|---|---|
+| `staleAfterMinutes` | 缓存超过多少分钟就标记 `maybeStale`，默认 30 |
+| `forceRefresh` | 占位参数：主动刷新要真实烧一次额度，暂不支持，传了只会多一条 warning |
+
+返回：`ok` / `loggedIn` / `subscription`（`type`、`rateLimitTier`、`billingType`）/ `fiveHour` / `sevenDay` / `limits[]` / `spend` / `extraUsage` / `cache`（`fetchedAt`、`ageMinutes`、`maybeStale`）/ `advice`（`normal` / `caution` / `blocked` / `unknown`）/ `warnings[]`。
+
+数据源是 `claude` CLI 自己写在 `~/.claude.json` 的 `cachedUsageUtilization` 缓存 + `claude auth status --json` 的登录态。**不读 `~/.claude/.credentials.json`，不直连 API，输出里不含邮箱 / 账号 uuid / token 等任何账号标识**。它是缓存：每次 `claude_code` 委派都会顺带刷新它，所以刚跑完一个任务时最新鲜；超过 `staleAfterMinutes` 会如实标注"N 分钟前的缓存"。CLI 升级改结构时字段会降级成 `null` 并给 warning，不会报错。
 
 ## 用法示例
 
@@ -123,6 +143,19 @@ job_kill { "jobId": "claude-code-1" }
 - 后台任务同样受 `timeoutMs` 约束，超时自动中止并以 `failed` 收尾（已产生的实时输出会保留）。
 - `job_output` / `job_list` / `job_kill` 与完成通知由 DSH 的 `dsh-tool-jobs` 提供；没装它时后台模式会直接报 `background jobs unavailable: load @deepseek-ai/dsh-tool-jobs`。
 
+## Claude Code 监控面板（Web 端）
+
+装好后重启 DSH，会话顶部「对话 / 轨迹」右边会多一个 **Claude Code** 标签页，点开整个会话体变成监控面板：
+
+- **左栏任务列表**：本会话的全部 `claude-code` 委派，运行中在前（按开始时间），已结束按新到旧；状态徽标 + 耗时实时走字。状态由 DSH 自带的任务推送驱动，不轮询。
+- **右栏 Claude Code 窗口**：任务头（label / jobId / Claude 会话 id）+ 统计条（轮数 / 费用 / 耗时）+ 终端式实时输出（等宽、`[tool] Xxx` 行高亮、贴底自动滚动、上滚即暂停并给「↓ 回到底部」）。
+- **操作**：取消（二次确认）、复制输出、复制 Claude 会话 id（可直接当 `resume` 用）。
+- 实时输出只在「面板打开 + 选中任务还在跑」时每秒拉一次增量，任务进终态后补拉一次收尾。
+- 面板的读取走**绝对 offset**，和模型侧 `job_output` 的游标完全独立——你在面板里看输出不会偷走模型的字节。面板取消走插件自己的中止通道，任务照常以 `killed` 结算，**模型仍然会收到完成通知**。
+- 任务只存在于当前 DSH 进程内（每会话保留最近 20 条），重启后列表为空；历史结果看对话里的工具卡片。
+- 标签页在 tab 条里的位置由插件加载顺序决定（不是 `order`），一般就在「轨迹」右边。
+- 给已装好的插件补上这个 Web 半边后**必须重启 DSH**：包元数据的"非 client 包"判定会被永久缓存。
+
 ## 错误诊断
 
 调用前会做一次同步预检，常见问题给的是可直接照做的提示：
@@ -148,9 +181,18 @@ job_kill { "jobId": "claude-code-1" }
 
 ```bash
 npm install --legacy-peer-deps
-npm run build       # tsc → lib/
-npm run typecheck
+npm run build       # node 半边 tsc → lib/，client 半边 esbuild → lib/client.js，再断言产物齐全
+npm run typecheck   # 两个 tsconfig 都查（node + client）
 ```
+
+两个半边：
+
+| 半边 | 入口 | 产物 | 构建 |
+|---|---|---|---|
+| node（Host） | `src/index.ts`（+ `tracker.ts` / `remote.ts` / `usage.ts`） | `lib/*.js` + `lib/types/**` | `tsc -p tsconfig.json` |
+| client（Web） | `src/client/index.ts` | `lib/client.js`（单文件 CJS，外层包 `window.__ModuleLoader__.load({ id: "dsh-claude-code", … })`） | `tsc -p tsconfig.client.json`（只出 d.ts）+ `scripts/build-client.mjs`（esbuild） |
+
+client bundle 只允许 `require` DSH shell 的 seed 白名单（`react`、`react/jsx-runtime`、`@deepseek-ai/dsh-client-ui-primitives` 等），构建脚本会断言这一点，其余依赖必须打进 bundle。
 
 ## 发布
 
