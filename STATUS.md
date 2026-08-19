@@ -25,8 +25,14 @@
   - **任务书必须放仓库文件让 claude Read（命令行传参长文本会截断！）**，指令保持纯 ASCII + 相对路径（PS5.1 按 GBK 读 UTF-8 脚本会坏）
 - 本机 Clash = Clash Verge（verge-mihomo.exe 是引擎）；机场/svip 订阅节点已失效勿依赖
 
-## 待办（按优先级）
-- [ ] **重启 DSH 桌面**（用户操作）：0.2.0 + 0.3.0 都需重启才生效
+## 进行中
+- [ ] **0.3.1（原生输出渲染）**：后台任务 pwsh-1（claude 委派）——结构化事件流（text/thinking/tool_use/tool_result/result）+ readEvents RPC + 面板卡片式原生渲染；完成后 review + 部署
+- [ ] **0.3.2（两级超时 + 周期告警）**：计划已定，0.3.1 完成后由我直接实现（不委派）：
+  - Config 新增 `warnTimeoutMs`（默认 3600000=1h，首次告警不中止）、`warnIntervalMs`（默认 1800000=30min，周期提醒）；`timeoutMs` 默认提到 7200000=2h（硬超时，到点强制中止）
+  - 三个参数都支持 per-call 覆盖（工具参数）
+  - 告警送达：事件流插入 `{type:'warning'}`（面板醒目显示）+ 超时保留 failed timed out；job detail 运行中改不了（seam 限制，不动 seam）
+  - skill 加告警决策指导（无进展时建议取消/继续/resume 缩小范围）
+
 ## 待办（按优先级）
 - [ ] **重启 DSH**（用户操作）：0.2.0 + 0.3.0 + parallel-dev 都需重启才生效
 - [ ] **用户实际 profile 是 web（不是 desktop！）**——0.3.0 已补装到 web profile：
