@@ -15,6 +15,13 @@
   - dsh-tools defineTool：parameters/output.schema/execute(args,exec)/exec.signal/exec.agent
 - [x] SPEC-0.2.0.md（任务书，含全部实现规范与验收标准）
 - [x] 代理通道结论（重要，见下）
+- [x] **0.2.0 已由 Claude Code 实现并部署**（2026-08-19）：
+  - src/index.ts 重写（后台任务 jobs 集成 / 流式输出双缓冲 / 预检+错误映射 / SDK 新能力）
+  - review 阶段补修：① abort 后误报 completed 的 bug（runClaude 循环后检测 abort.signal.aborted）
+    ② 新增 `proxy` 配置项（用户要求：给 claude 子进程注入 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY，NO_PROXY 保持 localhost 直连）
+  - `npm run typecheck` 与 `npm run build` 均通过（exit 0）
+  - 已部署到 desktop profile（node_modules\dsh-claude-code 0.1.2 → 0.2.0）
+  - git: commit d8e0958
 
 ## 代理结论（本机 Claude Code 使用）
 - **claude CLI 走本机 Clash（127.0.0.1:7897）可用**：`$env:HTTPS_PROXY="http://127.0.0.1:7897"; $env:HTTP_PROXY="http://127.0.0.1:7897"` 后再跑 `claude -p ...`
@@ -30,13 +37,11 @@
   - 委派命令模板：`claude -p <任务> --permission-mode acceptEdits --allowedTools Read Edit Write Bash Grep Glob --max-turns 80 --output-format text`（cwd=仓库，先设 HTTPS_PROXY）
   - 任务书：SPEC-0.2.0.md
 
-## 待办（委派完成后）
-- [ ] review Claude Code 产出（读 src/index.ts、README、CHANGELOG、package.json 版本）
-- [ ] 亲自跑 `npm run typecheck` 和 `npm run build` 验证（不采信 claude 自报）
-- [ ] 给插件加 **proxy 配置项**（用户明确要求：插件内部给 claude 子进程注入 HTTPS_PROXY，做到"不开 TUN 也能用 claude"；即 SPEC 里 env 处加 `HTTPS_PROXY: config.proxy`）
-- [ ] 部署：把 lib/、package.json、cordis.patch.yml、CHANGELOG.md、README.md 复制到 `C:\Users\Administrator\.dsh\profiles\desktop\node_modules\dsh-claude-code\`
-- [ ] 重启 DSH 桌面后新版本生效（需用户操作）；README 增加网络/代理提示
-- [ ] 可选：git 提交 0.2.0 并推送/发布 npm
+## 待办
+- [ ] **重启 DSH 桌面**后 0.2.0 生效（用户操作；重启后 claude_code 工具带全部新能力）
+- [ ] 实跑一次后台任务（run_in_background: true + job_output 增量读取）确认 jobs 集成符合预期（Claude Code 自述未实测）
+- [ ] 可选：git push + npm publish 0.2.0（需 npm login）
+- [ ] 可选：把 proxy 配置写进 desktop profile 的 cordis.patch.yml（如 `proxy: http://127.0.0.1:7897`）
 
 ## 关键路径速查
 - 插件源码：`src/index.ts`
