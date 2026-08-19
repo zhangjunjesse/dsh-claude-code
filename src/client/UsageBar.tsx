@@ -1,11 +1,13 @@
 /**
- * The panel's subscription-usage bar, pinned above the delegation list.
+ * The panel's subscription-usage bar, pinned above the task tab strip.
  *
  * It renders exactly what the host's `claudeCode/usage` returns — the claude
- * CLI's own cached quota — as two progress bars (5-hour and 7-day rolling
- * windows), a chip per per-model limit (`Fable 0%`), and a go/no-go badge. No
- * refresh is ever triggered on the account: the button re-reads the same local
- * cache, which the CLI refreshes on its own after every claude turn.
+ * CLI's own cached quota. Vertical space belongs to the output, so the bar is
+ * ONE line by default (`Claude Max · 20x | 5h 2% · 7d 3% | 正常 | 刷新`) and
+ * only unfolds the progress bars, reset times, per-model chips and cache age
+ * when the reader asks for them. No refresh is ever triggered on the account:
+ * the button re-reads the same local cache, which the CLI refreshes on its own
+ * after every claude turn.
  *
  * Presentation and fetching are split on purpose: `UsageBar` is a pure function
  * of its props (so it can be rendered and asserted headlessly), while
@@ -125,12 +127,22 @@ function WindowRow({ label, window, soon }: { label: string, window: UsageWindow
   )
 }
 
+/** `2%` for one window, `—` when the host had no utilization for it. */
+function shortPercent(window: UsageWindowView | null): string {
+  if (window === null || window.utilizationPercent === null) return '—'
+  return `${Math.round(clampPercent(window.utilizationPercent))}%`
+}
+
 /**
  * The usage bar itself. Three degraded states are first-class: still loading,
  * signed out (the numbers would be a previous login's), and a failed read that
  * the reader can retry.
+ *
+ * `expanded` is local: the bar is the only thing that cares, and a fold state
+ * that resets when the harness unmounts the tab is the wanted behaviour.
  */
 export function UsageBar({ usage, loading, error, onRefresh }: UsageBarProps) {
+  const [expanded, setExpanded] = useState(false)
   const refresh = (
     <button
       type="button"
@@ -178,40 +190,67 @@ export function UsageBar({ usage, loading, error, onRefresh }: UsageBarProps) {
   return (
     <div className={CSS.usage} role="status" aria-label={t('usage.title')}>
       <div className={CSS.usageHead}>
-        <span className={CSS.usagePlan}>{formatPlan(usage.subscription.type)}</span>
-        {tier === null ? null : <span className={CSS.usageTier}>· {tier}</span>}
-        <span className={usage.cache.maybeStale ? `${CSS.usageCache} ${CSS.usageStale}` : CSS.usageCache}>
-          {cacheLabel(usage)}
-        </span>
-        <span className={CSS.usageSpacer} />
-        <span className={BADGE_CLASS[usage.advice]}>{t(BADGE_KEY[usage.advice])}</span>
-        <span className={CSS.usageAdvice}>{t(ADVICE_KEY[usage.advice])}</span>
+        {/* The line itself is the expander. The refresh button stays a sibling:
+            a button inside a button is not renderable HTML. */}
+        <button
+          type="button"
+          className={CSS.usageToggle}
+          aria-expanded={expanded}
+          title={t(expanded ? 'usage.collapse' : 'usage.expand')}
+          onClick={() => { setExpanded((value) => !value) }}
+        >
+          <span className={CSS.usageCaret}>{expanded ? '▾' : '▸'}</span>
+          <span className={CSS.usagePlan}>{formatPlan(usage.subscription.type)}</span>
+          {tier === null ? null : <span className={CSS.usageTier}>· {tier}</span>}
+          {hasWindows ? (
+            <span className={CSS.usageMini}>
+              {t('usage.fiveHourShort')} {shortPercent(usage.fiveHour)}
+              {' · '}
+              {t('usage.sevenDayShort')} {shortPercent(usage.sevenDay)}
+            </span>
+          ) : (
+            <span className={CSS.usageMini}>{t('usage.noData')}</span>
+          )}
+          <span className={CSS.usageSpacer} />
+          <span className={BADGE_CLASS[usage.advice]}>{t(BADGE_KEY[usage.advice])}</span>
+        </button>
         {refresh}
       </div>
 
       {usage.loggedIn ? null : <div className={CSS.usageNote}>{t('usage.loggedOut')}</div>}
 
-      {hasWindows ? (
-        <div className={CSS.usageBars}>
-          {usage.fiveHour === null ? null : (
-            <WindowRow label={t('usage.fiveHour')} window={usage.fiveHour} soon />
+      {!expanded ? null : (
+        <div className={CSS.usageDetail}>
+          {hasWindows ? (
+            <div className={CSS.usageBars}>
+              {usage.fiveHour === null ? null : (
+                <WindowRow label={t('usage.fiveHour')} window={usage.fiveHour} soon />
+              )}
+              {usage.sevenDay === null ? null : (
+                <WindowRow label={t('usage.sevenDay')} window={usage.sevenDay} soon={false} />
+              )}
+            </div>
+          ) : (
+            <div className={CSS.usageNote}>{t('usage.noData')}</div>
           )}
-          {usage.sevenDay === null ? null : (
-            <WindowRow label={t('usage.sevenDay')} window={usage.sevenDay} soon={false} />
-          )}
-        </div>
-      ) : (
-        <div className={CSS.usageNote}>{t('usage.noData')}</div>
-      )}
 
-      {scoped.length === 0 ? null : (
-        <div className={CSS.usageChips}>
-          <span className={CSS.usageChipsLabel}>{t('usage.scoped')}</span>
-          {scoped.map((limit) => (
-            <span key={`${limit.kind}:${limit.scopeModel}`} className={CSS.usageChip}>
-              {limit.scopeModel} {Math.round(clampPercent(limit.percent))}%
+          {scoped.length === 0 ? null : (
+            <div className={CSS.usageChips}>
+              <span className={CSS.usageChipsLabel}>{t('usage.scoped')}</span>
+              {scoped.map((limit) => (
+                <span key={`${limit.kind}:${limit.scopeModel}`} className={CSS.usageChip}>
+                  {limit.scopeModel} {Math.round(clampPercent(limit.percent))}%
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className={CSS.usageChips}>
+            <span className={usage.cache.maybeStale ? `${CSS.usageCache} ${CSS.usageStale}` : CSS.usageCache}>
+              {cacheLabel(usage)}
             </span>
-          ))}
+            <span className={CSS.usageAdvice}>{t(ADVICE_KEY[usage.advice])}</span>
+          </div>
         </div>
       )}
     </div>

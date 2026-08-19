@@ -13,6 +13,9 @@ export interface UsageBarProps {
  * The usage bar itself. Three degraded states are first-class: still loading,
  * signed out (the numbers would be a previous login's), and a failed read that
  * the reader can retry.
+ *
+ * `expanded` is local: the bar is the only thing that cares, and a fold state
+ * that resets when the harness unmounts the tab is the wanted behaviour.
  */
 export declare function UsageBar({ usage, loading, error, onRefresh }: UsageBarProps): import("react").JSX.Element;
 /** What {@link useUsage} hands the bar. */

@@ -73,6 +73,8 @@ export interface JobInfo {
   jobId: string
   label: string
   task: string
+  /** Claude model alias/id of the run; `null` when the host recorded none. */
+  model?: string | null
   status: 'running' | 'completed' | 'failed' | 'killed'
   startedAt: number
   finishedAt?: number

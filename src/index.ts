@@ -13,7 +13,7 @@ import { DEFAULT_STALE_AFTER_MINUTES, readUsageSnapshot, renderUsage } from './u
 export const name = 'claude-code'
 export const inject = ['tools', 'skills']
 
-const CLIENT_APP = 'dsh-claude-code/0.3.3'
+const CLIENT_APP = 'dsh-claude-code/0.3.5'
 
 /** Cap for the live-output buffers kept per background job. */
 const MAX_LIVE_BUFFER = 500_000
@@ -791,6 +791,7 @@ function startBackgroundJob(
       ...(owner?.id !== undefined ? { ownerSessionId: owner.id } : {}),
       task: req.task,
       label,
+      ...(req.model !== undefined ? { model: req.model } : {}),
       read: resolved.read,
       events: resolved.events,
       cancelFromUi: resolved.cancelFromUi,

@@ -20,6 +20,18 @@ export declare const zh: {
     'detail.job': string;
     'detail.session': string;
     'detail.session.hint': string;
+    'detail.title': string;
+    'detail.open': string;
+    'detail.close': string;
+    'detail.task': string;
+    'detail.model': string;
+    'detail.status': string;
+    'detail.startedAt': string;
+    'detail.finishedAt': string;
+    'detail.duration': string;
+    'detail.cost': string;
+    'detail.turns': string;
+    'detail.failure': string;
     'stats.turns': string;
     'stats.cost': string;
     'stats.duration': string;
@@ -34,6 +46,8 @@ export declare const zh: {
     'output.follow': string;
     'output.collapse': string;
     'output.expand': string;
+    'output.raw': string;
+    'output.preview': string;
     'events.title': string;
     'events.empty': string;
     'events.truncated': string;
@@ -48,6 +62,10 @@ export declare const zh: {
     'usage.plan.unknown': string;
     'usage.fiveHour': string;
     'usage.sevenDay': string;
+    'usage.fiveHourShort': string;
+    'usage.sevenDayShort': string;
+    'usage.expand': string;
+    'usage.collapse': string;
     'usage.reset': string;
     'usage.resetSoon': string;
     'usage.scoped': string;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5
+- **Markdown preview in the panel**: assistant text now renders as formatted Markdown (headings, bold/italic, inline code, fenced code blocks, lists, block quotes, rules and http(s) links that open in a new tab) through a zero-dependency renderer that never touches `innerHTML`, with a per-block "Raw / Preview" toggle for the source.
+
+## 0.3.4
+- **Compact usage bar**: the quota bar is now one collapsed line (`Claude Max · 20x | 5h 2% · 7d 3% | normal | Refresh`) that unfolds the 5-hour/7-day progress bars, reset times, per-model chips and cache age on click, giving the output back most of the panel's header height.
+- **Task tabs instead of a side list**: delegations moved from a 260px left column to a horizontally scrolling tab strip above the output, so the Claude Code window now owns the full panel width.
+- **Job detail modal**: each tab carries a `ⓘ` that opens a dialog (ESC / backdrop / button to close) with the complete task text, the model, status, start and finish times, duration, cost, turns, the copyable Claude session id and the failure reason.
+- **Model passthrough**: a background delegation records the model it ran with (`TrackedJob.model` → `JobInfo.model`, `null` on the wire when absent), and the tabs get status-coloured dots — blue and breathing while running, green/red/grey once settled.
+
 ## 0.3.3
 - **Usage bar in the monitor panel**: the Claude Code tab now opens with the subscription's quota on top — plan tier (`Claude Max · 20x`), 5-hour and 7-day progress bars with reset times (amber from 50%, red from 80%), a chip per per-model limit (`Fable 0%`), a normal/caution/blocked badge, cache age and a refresh button — served by a new `claudeCode/usage` remote that re-reads the claude CLI's own local cache (no quota is spent, no account identity is returned) and degrades to a retryable message when it cannot.
 

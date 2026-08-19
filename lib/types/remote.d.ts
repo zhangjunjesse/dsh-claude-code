@@ -17,6 +17,14 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { type ClaudeEvent, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js';
 import { type UsageAdvice } from './usage.js';
+/**
+ * `claudeCode/listJobs` row. Identical to the tracker's {@link JobInfo} except
+ * for `model`, which is always present: the api-gateway refuses to encode an
+ * `undefined` value, so a run with no recorded model spells it `null`.
+ */
+export interface JobInfoWire extends Omit<JobInfo, 'model'> {
+    model: string | null;
+}
 /** One incremental output read as the panel sees it. */
 export interface ReadOutputResult {
     text: string;
@@ -89,7 +97,7 @@ export declare class ClaudeCodeRemote extends TypertRemoteService {
      * Every claude-code delegation owned by one session, with the metadata the
      * jobs mirror does not carry (cost, turns, claude session id, final text).
      */
-    listJobs(sessionId: string): Promise<JobInfo[]>;
+    listJobs(sessionId: string): Promise<JobInfoWire[]>;
     /**
      * Incremental output from an absolute offset. There is no server-side cursor,
      * so any number of panels (or windows) can read the same job independently.

@@ -15,6 +15,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CSS, toolToneClass } from './styles.js'
+import { Markdown } from './md.js'
 import { t } from './locales.js'
 import type { ClaudeEvent } from './types.js'
 
@@ -202,7 +203,18 @@ export function EventView({ events, truncated, jobId }: EventViewProps) {
 
         {nodes.map((node) => {
           if (node.kind === 'text') {
-            return <div key={node.key} className={CSS.evText}>{node.text}</div>
+            // Rendered Markdown by default; the toggle falls back to the source
+            // for anything the small parser gets wrong (or for copying).
+            const rawKey = `${node.key}:raw`
+            const raw = expanded.has(rawKey)
+            return (
+              <div key={node.key} className={CSS.evText}>
+                {raw ? <pre className={CSS.evTextRaw}>{node.text}</pre> : <Markdown text={node.text} />}
+                <button type="button" className={CSS.evMore} onClick={() => { toggle(rawKey) }}>
+                  {raw ? t('output.preview') : t('output.raw')}
+                </button>
+              </div>
+            )
           }
 
           if (node.kind === 'thinking') {

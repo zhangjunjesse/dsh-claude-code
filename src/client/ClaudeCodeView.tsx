@@ -1,6 +1,12 @@
 /**
- * The "Claude Code" conversation view: a delegation list on the left and a live
- * Claude Code window on the right.
+ * The "Claude Code" conversation view: a task tab strip on top and the live
+ * Claude Code window filling everything below it.
+ *
+ * The panel is wide but short, so width is what it has to spend and height is
+ * what it has to save: the usage bar folds to one line, each delegation is one
+ * ellipsised tab (the strip scrolls horizontally once they stop fitting), and
+ * everything a tab cannot hold — the full task text, the model, the timings —
+ * moves into {@link JobDetailModal} behind the tab's `ⓘ`.
  *
  * Two data sources meet here. Job identity and lifecycle come for free from the
  * harness's `session/jobs` push (mirrored into `jobsBySession`), so status
@@ -14,15 +20,15 @@
  * module-level cache and the view resumes reading where it left off.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClaudeCodeApi } from './api.js'
 import type { ClaudeEvent, JobInfo, JobStatus, JobView, ViewProps } from './types.js'
 import { EventView } from './EventView.js'
 import { OutputView } from './OutputView.js'
+import { JobDetailModal } from './JobDetailModal.js'
 import { UsageBar, useUsage } from './UsageBar.js'
+import { formatDuration, statusLabel } from './format.js'
 import { CSS } from './styles.js'
-import { t, type LocaleKey } from './locales.js'
+import { t } from './locales.js'
 
 /** Stable empty list so a session with no jobs keeps one array identity. */
 const NO_JOBS: readonly JobView[] = []
@@ -89,36 +95,28 @@ function ordered(jobs: readonly JobView[]): JobView[] {
   })
 }
 
-function dotState(status: JobStatus): StateDotState {
+/** Tab status dot: blue and breathing while live, then a settled colour. */
+function dotClass(status: JobStatus): string {
   switch (status) {
-    case 'running': return 'ongoing'
-    case 'stopping': return 'warning'
-    case 'killed': return 'warning'
-    case 'completed': return 'done'
-    default: return 'error'
+    case 'running':
+    case 'stopping': return `${CSS.tabDot} ${CSS.tabDotRunning}`
+    case 'completed': return `${CSS.tabDot} ${CSS.tabDotDone}`
+    case 'killed': return `${CSS.tabDot} ${CSS.tabDotKilled}`
+    default: return `${CSS.tabDot} ${CSS.tabDotFailed}`
   }
 }
 
-function statusLabel(status: JobStatus): string {
-  const key: LocaleKey = status === 'completed'
-    ? 'status.completed'
-    : status === 'failed'
-      ? 'status.failed'
-      : status === 'running'
-        ? 'status.running'
-        : 'status.killed'
-  return t(key)
-}
+/** How many characters of a task label one tab shows before the ellipsis. */
+const TAB_LABEL_CHARS = 14
 
-/** Elapsed time in at most two adjacent units. */
-function formatDuration(elapsedMs: number): string {
-  const total = Math.max(0, Math.floor(elapsedMs / 1000))
-  const seconds = total % 60
-  const minutes = Math.floor(total / 60) % 60
-  const hours = Math.floor(total / 3600)
-  if (hours > 0) return `${hours}h ${minutes}m`
-  if (minutes > 0) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
+/**
+ * Cut a label to tab width. The stylesheet also ellipsises (a CJK label is far
+ * wider than a latin one at the same length), but cutting here keeps a long
+ * label from stretching the strip before CSS ever gets to clamp it.
+ */
+function clip(label: string): string {
+  const flat = label.replace(/\s+/g, ' ').trim()
+  return flat.length > TAB_LABEL_CHARS ? `${flat.slice(0, TAB_LABEL_CHARS)}…` : flat
 }
 
 /** Pick the job the panel should show when the current choice is gone. */
@@ -155,6 +153,8 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
     const [error, setError] = useState<string | null>(null)
     const [now, setNow] = useState(() => Date.now())
     const [copied, setCopied] = useState<string | null>(null)
+    // Job whose detail modal is open, or undefined when none is.
+    const [detailFor, setDetailFor] = useState<string | undefined>(undefined)
     // Module-level output cache mutates in place; this counter republishes it.
     const [revision, setRevision] = useState(0)
     const bumpRef = useRef(() => { setRevision((value) => value + 1) })
@@ -282,6 +282,13 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
     // `revision` is read so the memo-free render tracks the mutable cache.
     void revision
 
+    // A job that aged out of the list must not leave its modal behind.
+    const modalJob = detailFor === undefined ? undefined : rows.find((job) => job.id === detailFor)
+    const closeDetail = useCallback(() => { setDetailFor(undefined) }, [])
+    const copySession = useCallback((sessionId: string) => {
+      void copy(sessionId).then((done) => { if (done) flashCopied('session') })
+    }, [flashCopied])
+
     const usageBar = (
       <UsageBar usage={usage.usage} loading={usage.loading} error={usage.error} onRefresh={usage.refresh} />
     )
@@ -303,30 +310,35 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
       <div className={CSS.root} data-conversation-composer-overlay="">
         {usageBar}
         <div className={CSS.body}>
-          <div className={CSS.list} role="tablist" aria-label={t('list.title')}>
-            <div className={CSS.listTitle}>{t('list.title')}</div>
+          {/* One tab per delegation, single line each; the strip scrolls
+              horizontally rather than wrapping into a second row. */}
+          <div className={CSS.tabs} role="tablist" aria-label={t('list.title')}>
             {rows.map((job) => {
-              const live = isLive(job)
-              const elapsed = live ? now - job.startedAt : (job.finishedAt ?? job.startedAt) - job.startedAt
+              const active = job.id === selected
               return (
-                <button
-                  key={job.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={job.id === selected}
-                  className={job.id === selected ? `${CSS.row} ${CSS.rowActive}` : CSS.row}
-                  onClick={() => { setSelected(job.id); panel.selected = job.id }}
-                >
-                  <span className={CSS.rowHead}>
-                    <StateDot state={dotState(job.status)} className={CSS.dot} />
-                    <span className={CSS.rowLabel} title={job.label}>{job.label}</span>
-                  </span>
-                  <span className={CSS.rowMeta}>
-                    <span>{statusLabel(job.status)}</span>
-                    <span>{formatDuration(elapsed)}</span>
-                    <span className={CSS.mono}>{job.id}</span>
-                  </span>
-                </button>
+                <div key={job.id} role="presentation" className={active ? `${CSS.tab} ${CSS.tabActive}` : CSS.tab}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={CSS.tabMain}
+                    title={job.label}
+                    onClick={() => { setSelected(job.id); panel.selected = job.id }}
+                  >
+                    <span className={dotClass(job.status)} />
+                    <span className={CSS.tabLabel}>{clip(job.label)}</span>
+                  </button>
+                  {/* Opening the detail must not also switch tabs. */}
+                  <button
+                    type="button"
+                    className={CSS.tabInfo}
+                    title={t('detail.open')}
+                    aria-label={t('detail.open')}
+                    onClick={(event) => { event.stopPropagation(); setDetailFor(job.id) }}
+                  >
+                    ⓘ
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -337,7 +349,6 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
             ) : (
               <>
                 <div className={CSS.paneHead}>
-                  <div className={CSS.paneTitle} title={detail?.task ?? current.label}>{current.label}</div>
                   <div className={CSS.stats}>
                     <span className={CSS.stat}>{t('detail.job')}: <span className={CSS.mono}>{current.id}</span></span>
                     <span className={CSS.stat}>{statusLabel(current.status)}</span>
@@ -346,13 +357,8 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
                     <span className={CSS.stat}>
                       {t('stats.duration')} {formatDuration(isLive(current) ? now - current.startedAt : (current.finishedAt ?? current.startedAt) - current.startedAt)}
                     </span>
-                    {detail?.claudeSessionId !== undefined ? (
-                      <span className={CSS.stat} title={t('detail.session.hint')}>
-                        {t('detail.session')}: <span className={CSS.mono}>{detail.claudeSessionId}</span>
-                      </span>
-                    ) : null}
+                    {current.detail !== undefined ? <span className={CSS.stat}>{current.detail}</span> : null}
                   </div>
-                  {current.detail !== undefined ? <div className={CSS.stats}>{current.detail}</div> : null}
                 </div>
 
                 {error !== null ? <div className={CSS.error}>{error}</div> : null}
@@ -407,6 +413,17 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
             )}
           </div>
         </div>
+
+        {modalJob === undefined ? null : (
+          <JobDetailModal
+            job={modalJob}
+            detail={meta[modalJob.id]}
+            now={now}
+            onClose={closeDetail}
+            onCopySession={copySession}
+            copyLabel={copied === 'session' ? t('action.copied') : t('action.copySession')}
+          />
+        )}
       </div>
     )
   }

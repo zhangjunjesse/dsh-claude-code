@@ -15,6 +15,10 @@ export const CSS = {
   body: 'ccp-body',
   usage: 'ccp-usage',
   usageHead: 'ccp-usageHead',
+  usageToggle: 'ccp-usageToggle',
+  usageMini: 'ccp-usageMini',
+  usageCaret: 'ccp-usageCaret',
+  usageDetail: 'ccp-usageDetail',
   usagePlan: 'ccp-usagePlan',
   usageTier: 'ccp-usageTier',
   usageCache: 'ccp-usageCache',
@@ -40,17 +44,31 @@ export const CSS = {
   usageChip: 'ccp-usageChip',
   usageNote: 'ccp-usageNote',
   usageError: 'ccp-usageError',
-  list: 'ccp-list',
-  listTitle: 'ccp-listTitle',
-  row: 'ccp-row',
-  rowActive: 'ccp-rowActive',
-  rowHead: 'ccp-rowHead',
-  rowLabel: 'ccp-rowLabel',
-  rowMeta: 'ccp-rowMeta',
-  dot: 'ccp-dot',
+  tabs: 'ccp-tabs',
+  tab: 'ccp-tab',
+  tabActive: 'ccp-tabActive',
+  tabMain: 'ccp-tabMain',
+  tabDot: 'ccp-tabDot',
+  tabDotRunning: 'ccp-tabDotRunning',
+  tabDotDone: 'ccp-tabDotDone',
+  tabDotFailed: 'ccp-tabDotFailed',
+  tabDotKilled: 'ccp-tabDotKilled',
+  tabLabel: 'ccp-tabLabel',
+  tabInfo: 'ccp-tabInfo',
+  modalOverlay: 'ccp-modalOverlay',
+  modal: 'ccp-modal',
+  modalHead: 'ccp-modalHead',
+  modalTitle: 'ccp-modalTitle',
+  modalClose: 'ccp-modalClose',
+  modalBody: 'ccp-modalBody',
+  modalRow: 'ccp-modalRow',
+  modalKey: 'ccp-modalKey',
+  modalValue: 'ccp-modalValue',
+  modalTask: 'ccp-modalTask',
+  modalFailure: 'ccp-modalFailure',
+  modalFoot: 'ccp-modalFoot',
   pane: 'ccp-pane',
   paneHead: 'ccp-paneHead',
-  paneTitle: 'ccp-paneTitle',
   stats: 'ccp-stats',
   stat: 'ccp-stat',
   output: 'ccp-output',
@@ -61,6 +79,26 @@ export const CSS = {
   events: 'ccp-events',
   eventsBody: 'ccp-eventsBody',
   evText: 'ccp-evText',
+  evTextRaw: 'ccp-evTextRaw',
+  md: 'ccp-md',
+  mdRaw: 'ccp-mdRaw',
+  mdP: 'ccp-mdP',
+  mdH1: 'ccp-mdH1',
+  mdH2: 'ccp-mdH2',
+  mdH3: 'ccp-mdH3',
+  mdH4: 'ccp-mdH4',
+  mdH5: 'ccp-mdH5',
+  mdH6: 'ccp-mdH6',
+  mdStrong: 'ccp-mdStrong',
+  mdEm: 'ccp-mdEm',
+  mdCode: 'ccp-mdCode',
+  mdPre: 'ccp-mdPre',
+  mdPreCode: 'ccp-mdPreCode',
+  mdQuote: 'ccp-mdQuote',
+  mdList: 'ccp-mdList',
+  mdItem: 'ccp-mdItem',
+  mdLink: 'ccp-mdLink',
+  mdHr: 'ccp-mdHr',
   evThinking: 'ccp-evThinking',
   evThinkingHead: 'ccp-evThinkingHead',
   evThinkingBody: 'ccp-evThinkingBody',
@@ -117,10 +155,11 @@ const CSS_TEXT = `
   font-size: 13px;
 }
 .ccp-root * { box-sizing: border-box; }
-/* List + output pane; the usage bar sits above this row. */
+/* Task tab strip on top, output pane below; the usage bar sits above both. */
 .ccp-body {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
   min-height: 0;
 }
@@ -131,18 +170,55 @@ const CSS_TEXT = `
   flex-direction: column;
   gap: 6px;
   flex: none;
-  padding: 8px 10px;
+  padding: 3px 8px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-fill-l1);
 }
+/* One compact line: nothing here may wrap, so the bar stays 24px tall. */
 .ccp-usageHead {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
   font-size: 12px;
   line-height: 18px;
+  white-space: nowrap;
+}
+/* The whole line is the expander; the refresh button sits outside it. */
+.ccp-usageToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ccp-usageToggle:hover { color: var(--dsw-alias-label-primary); }
+.ccp-usageMini {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ccp-usageCaret {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
+.ccp-usageDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 4px;
 }
 .ccp-usagePlan { font-weight: 600; color: var(--dsw-alias-label-primary); }
 .ccp-usageTier { color: var(--dsw-alias-label-secondary); }
@@ -240,61 +316,169 @@ const CSS_TEXT = `
   font-size: 11px;
   line-height: 16px;
 }
-.ccp-list {
+/* --- task tab strip --- */
+.ccp-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: stretch;
+  gap: 6px;
   flex: none;
-  width: 260px;
-  min-height: 0;
-  overflow: auto;
-  padding-right: 4px;
+  min-width: 0;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
-.ccp-listTitle {
-  flex: none;
-  padding: 2px 6px 6px;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
-}
-.ccp-row {
+.ccp-tab {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-  padding: 7px 8px;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  max-width: 200px;
+  padding: 0 4px 0 8px;
   border: 1px solid transparent;
   border-radius: 8px;
+  background: var(--dsw-alias-fill-l1);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.ccp-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.ccp-tabActive {
+  background: var(--dsw-alias-fill-l2);
+  border-color: var(--dsw-alias-state-business-primary);
+}
+.ccp-tabMain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 2px;
+  border: none;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: 12px;
+  line-height: 18px;
   text-align: left;
   cursor: pointer;
 }
-.ccp-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.ccp-rowActive {
-  background: var(--dsw-alias-fill-l2);
-  border-color: var(--dsw-alias-border-l2);
-}
-.ccp-rowHead { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ccp-rowLabel {
-  flex: 1;
+.ccp-tabLabel {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.ccp-rowMeta {
+.ccp-tabActive .ccp-tabMain { font-weight: 600; }
+.ccp-tabDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--dsw-alias-label-tertiary);
+}
+.ccp-tabDotRunning {
+  background: var(--dsw-alias-state-info, var(--dsw-alias-state-business-primary, #3b82f6));
+  animation: ccp-breathe 1.6s ease-in-out infinite;
+}
+.ccp-tabDotDone { background: var(--dsw-alias-state-success, #3d9970); }
+.ccp-tabDotFailed { background: var(--dsw-alias-state-error, #d05353); }
+.ccp-tabDotKilled { background: var(--dsw-alias-label-tertiary); }
+@keyframes ccp-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.78); }
+}
+.ccp-tabInfo {
+  flex: none;
+  padding: 0 3px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.ccp-tabInfo:hover {
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* --- job detail modal --- */
+.ccp-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.42);
+}
+.ccp-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, 90vw);
+  max-height: min(72vh, 640px);
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-base));
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+.ccp-modalHead { display: flex; align-items: center; gap: 8px; flex: none; }
+.ccp-modalTitle { flex: 1; font-size: 14px; line-height: 20px; font-weight: 600; }
+.ccp-modalClose {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.ccp-modalClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.ccp-modalBody {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding-left: 14px;
-  font-size: 11px;
-  line-height: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.ccp-modalRow { display: flex; gap: 10px; align-items: baseline; font-size: 12px; line-height: 18px; }
+.ccp-modalKey {
+  flex: none;
+  width: 84px;
   color: var(--dsw-alias-label-tertiary);
+}
+.ccp-modalValue {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-word;
   font-variant-numeric: tabular-nums;
 }
-.ccp-dot { flex: none; }
+.ccp-modalTask {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-fill-l1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ccp-modalFailure { color: var(--dsw-alias-state-error, #d05353); }
+.ccp-modalFoot { display: flex; flex: none; flex-wrap: wrap; gap: 8px; }
 .ccp-pane {
   display: flex;
   flex-direction: column;
@@ -304,7 +488,6 @@ const CSS_TEXT = `
   min-height: 0;
 }
 .ccp-paneHead { display: flex; flex-direction: column; gap: 4px; flex: none; }
-.ccp-paneTitle { font-size: 14px; line-height: 20px; font-weight: 500; }
 .ccp-stats {
   display: flex;
   flex-wrap: wrap;
@@ -361,12 +544,94 @@ const CSS_TEXT = `
   overflow: auto;
   padding: 10px 12px;
 }
+/* Assistant text is rendered Markdown, so the container is ordinary block flow
+   (the block elements md.ts emits own their own spacing) rather than pre-wrap. */
 .ccp-evText {
-  white-space: pre-wrap;
   word-break: break-word;
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-primary);
+}
+.ccp-evTextRaw {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* --- rendered markdown (see md.ts) --- */
+.ccp-md {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+/* Fallback when the parser refused the source: show it verbatim. */
+.ccp-mdRaw {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ccp-mdP { margin: 0; }
+.ccp-mdH1, .ccp-mdH2, .ccp-mdH3, .ccp-mdH4, .ccp-mdH5, .ccp-mdH6 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.ccp-mdH1 { font-size: 17px; line-height: 24px; }
+.ccp-mdH2 { font-size: 15px; line-height: 22px; }
+.ccp-mdH3 { font-size: 14px; line-height: 20px; }
+.ccp-mdH4 { font-size: 13px; line-height: 20px; }
+.ccp-mdH5 { font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+.ccp-mdH6 { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.ccp-mdStrong { font-weight: 600; }
+.ccp-mdEm { font-style: italic; }
+.ccp-mdCode {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-fill-l2);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  word-break: break-word;
+}
+.ccp-mdPre {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-fill-l2);
+  overflow-x: auto;
+}
+.ccp-mdPreCode {
+  display: block;
+  white-space: pre;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+.ccp-mdQuote {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+.ccp-mdQuote > * + * { margin-top: 6px; }
+/* Not a flex container: flex items lose their list markers. */
+.ccp-mdList { margin: 0; padding-left: 20px; }
+.ccp-mdItem { margin: 0; }
+.ccp-mdItem + .ccp-mdItem { margin-top: 2px; }
+.ccp-mdLink {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: underline;
+  word-break: break-all;
+}
+.ccp-mdHr {
+  margin: 2px 0;
+  border: none;
+  border-top: 1px solid var(--dsw-alias-border-l2);
 }
 .ccp-evThinking {
   display: flex;

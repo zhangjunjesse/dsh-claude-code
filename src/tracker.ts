@@ -186,6 +186,8 @@ export interface TrackedJob {
   task: string
   /** One-line label, identical to the one the jobs seam shows. */
   label: string
+  /** Claude model alias/id the run was started with (panel detail only). */
+  model?: string
   status: TrackedStatus
   startedAt: number
   finishedAt?: number
@@ -211,6 +213,8 @@ export interface TrackedRegistration {
   ownerSessionId?: string
   task: string
   label: string
+  /** The resolved `req.model` of this run; absent when the caller had none. */
+  model?: string
   read(fromOffset: number): TrackedRead
   /** The job's own event buffer; a fresh one is created when omitted. */
   events?: EventBuffer
@@ -222,6 +226,8 @@ export interface JobInfo {
   jobId: string
   label: string
   task: string
+  /** Claude model alias/id, when the run recorded one. */
+  model?: string
   status: TrackedStatus
   startedAt: number
   finishedAt?: number
@@ -244,6 +250,7 @@ export function toJobInfo(job: TrackedJob): JobInfo {
     task: job.task,
     status: job.status,
     startedAt: job.startedAt,
+    ...(job.model !== undefined ? { model: job.model } : {}),
     ...(job.finishedAt !== undefined ? { finishedAt: job.finishedAt } : {}),
     ...(job.claudeSessionId !== undefined ? { claudeSessionId: job.claudeSessionId } : {}),
     ...(job.costUsd !== undefined ? { costUsd: job.costUsd } : {}),
@@ -266,6 +273,7 @@ export class JobTracker {
       ...(registration.ownerSessionId !== undefined ? { ownerSessionId: registration.ownerSessionId } : {}),
       task: registration.task,
       label: registration.label,
+      ...(registration.model !== undefined ? { model: registration.model } : {}),
       status: 'running',
       startedAt: Date.now(),
       read: registration.read,

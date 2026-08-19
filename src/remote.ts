@@ -18,6 +18,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import { toJobInfo, type ClaudeEvent, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js'
 import { readUsageSnapshot, type UsageAdvice, type UsageSnapshot } from './usage.js'
 
+/**
+ * `claudeCode/listJobs` row. Identical to the tracker's {@link JobInfo} except
+ * for `model`, which is always present: the api-gateway refuses to encode an
+ * `undefined` value, so a run with no recorded model spells it `null`.
+ */
+export interface JobInfoWire extends Omit<JobInfo, 'model'> {
+  model: string | null
+}
+
 /** One incremental output read as the panel sees it. */
 export interface ReadOutputResult {
   text: string
@@ -167,8 +176,8 @@ export class ClaudeCodeRemote extends TypertRemoteService {
    * jobs mirror does not carry (cost, turns, claude session id, final text).
    */
   @Remote
-  async listJobs(sessionId: string): Promise<JobInfo[]> {
-    return this.tracker.list(sessionId).map(toJobInfo)
+  async listJobs(sessionId: string): Promise<JobInfoWire[]> {
+    return this.tracker.list(sessionId).map((job) => ({ ...toJobInfo(job), model: job.model ?? null }))
   }
 
   /**
