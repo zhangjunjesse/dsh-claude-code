@@ -20,6 +20,7 @@ import type { ClaudeCodeApi } from './api.js'
 import type { ClaudeEvent, JobInfo, JobStatus, JobView, ViewProps } from './types.js'
 import { EventView } from './EventView.js'
 import { OutputView } from './OutputView.js'
+import { UsageBar, useUsage } from './UsageBar.js'
 import { CSS } from './styles.js'
 import { t, type LocaleKey } from './locales.js'
 
@@ -157,6 +158,9 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
     // Module-level output cache mutates in place; this counter republishes it.
     const [revision, setRevision] = useState(0)
     const bumpRef = useRef(() => { setRevision((value) => value + 1) })
+    // Subscription quota for the bar on top: one read on mount, then a slow
+    // poll. It is independent of the job list, so a failure here never blocks it.
+    const usage = useUsage(api, sessionId)
 
     // Keep the selection valid as jobs appear, settle and age out.
     useEffect(() => {
@@ -278,9 +282,14 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
     // `revision` is read so the memo-free render tracks the mutable cache.
     void revision
 
+    const usageBar = (
+      <UsageBar usage={usage.usage} loading={usage.loading} error={usage.error} onRefresh={usage.refresh} />
+    )
+
     if (rows.length === 0) {
       return (
         <div className={CSS.root} data-conversation-composer-overlay="">
+          {usageBar}
           <div className={CSS.empty}>
             <div className={CSS.emptyTitle}>{t('list.empty.title')}</div>
             <div>{t('list.empty.hint')}</div>
@@ -292,108 +301,111 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
 
     return (
       <div className={CSS.root} data-conversation-composer-overlay="">
-        <div className={CSS.list} role="tablist" aria-label={t('list.title')}>
-          <div className={CSS.listTitle}>{t('list.title')}</div>
-          {rows.map((job) => {
-            const live = isLive(job)
-            const elapsed = live ? now - job.startedAt : (job.finishedAt ?? job.startedAt) - job.startedAt
-            return (
-              <button
-                key={job.id}
-                type="button"
-                role="tab"
-                aria-selected={job.id === selected}
-                className={job.id === selected ? `${CSS.row} ${CSS.rowActive}` : CSS.row}
-                onClick={() => { setSelected(job.id); panel.selected = job.id }}
-              >
-                <span className={CSS.rowHead}>
-                  <StateDot state={dotState(job.status)} className={CSS.dot} />
-                  <span className={CSS.rowLabel} title={job.label}>{job.label}</span>
-                </span>
-                <span className={CSS.rowMeta}>
-                  <span>{statusLabel(job.status)}</span>
-                  <span>{formatDuration(elapsed)}</span>
-                  <span className={CSS.mono}>{job.id}</span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className={CSS.pane}>
-          {current === undefined ? (
-            <div className={CSS.empty}>{t('select.empty')}</div>
-          ) : (
-            <>
-              <div className={CSS.paneHead}>
-                <div className={CSS.paneTitle} title={detail?.task ?? current.label}>{current.label}</div>
-                <div className={CSS.stats}>
-                  <span className={CSS.stat}>{t('detail.job')}: <span className={CSS.mono}>{current.id}</span></span>
-                  <span className={CSS.stat}>{statusLabel(current.status)}</span>
-                  {detail?.numTurns !== undefined ? <span className={CSS.stat}>{detail.numTurns} {t('stats.turns')}</span> : null}
-                  {detail?.costUsd !== undefined ? <span className={CSS.stat}>{t('stats.cost')} ${detail.costUsd.toFixed(4)}</span> : null}
-                  <span className={CSS.stat}>
-                    {t('stats.duration')} {formatDuration(isLive(current) ? now - current.startedAt : (current.finishedAt ?? current.startedAt) - current.startedAt)}
+        {usageBar}
+        <div className={CSS.body}>
+          <div className={CSS.list} role="tablist" aria-label={t('list.title')}>
+            <div className={CSS.listTitle}>{t('list.title')}</div>
+            {rows.map((job) => {
+              const live = isLive(job)
+              const elapsed = live ? now - job.startedAt : (job.finishedAt ?? job.startedAt) - job.startedAt
+              return (
+                <button
+                  key={job.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={job.id === selected}
+                  className={job.id === selected ? `${CSS.row} ${CSS.rowActive}` : CSS.row}
+                  onClick={() => { setSelected(job.id); panel.selected = job.id }}
+                >
+                  <span className={CSS.rowHead}>
+                    <StateDot state={dotState(job.status)} className={CSS.dot} />
+                    <span className={CSS.rowLabel} title={job.label}>{job.label}</span>
                   </span>
-                  {detail?.claudeSessionId !== undefined ? (
-                    <span className={CSS.stat} title={t('detail.session.hint')}>
-                      {t('detail.session')}: <span className={CSS.mono}>{detail.claudeSessionId}</span>
+                  <span className={CSS.rowMeta}>
+                    <span>{statusLabel(job.status)}</span>
+                    <span>{formatDuration(elapsed)}</span>
+                    <span className={CSS.mono}>{job.id}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className={CSS.pane}>
+            {current === undefined ? (
+              <div className={CSS.empty}>{t('select.empty')}</div>
+            ) : (
+              <>
+                <div className={CSS.paneHead}>
+                  <div className={CSS.paneTitle} title={detail?.task ?? current.label}>{current.label}</div>
+                  <div className={CSS.stats}>
+                    <span className={CSS.stat}>{t('detail.job')}: <span className={CSS.mono}>{current.id}</span></span>
+                    <span className={CSS.stat}>{statusLabel(current.status)}</span>
+                    {detail?.numTurns !== undefined ? <span className={CSS.stat}>{detail.numTurns} {t('stats.turns')}</span> : null}
+                    {detail?.costUsd !== undefined ? <span className={CSS.stat}>{t('stats.cost')} ${detail.costUsd.toFixed(4)}</span> : null}
+                    <span className={CSS.stat}>
+                      {t('stats.duration')} {formatDuration(isLive(current) ? now - current.startedAt : (current.finishedAt ?? current.startedAt) - current.startedAt)}
                     </span>
-                  ) : null}
+                    {detail?.claudeSessionId !== undefined ? (
+                      <span className={CSS.stat} title={t('detail.session.hint')}>
+                        {t('detail.session')}: <span className={CSS.mono}>{detail.claudeSessionId}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                  {current.detail !== undefined ? <div className={CSS.stats}>{current.detail}</div> : null}
                 </div>
-                {current.detail !== undefined ? <div className={CSS.stats}>{current.detail}</div> : null}
-              </div>
 
-              {error !== null ? <div className={CSS.error}>{error}</div> : null}
+                {error !== null ? <div className={CSS.error}>{error}</div> : null}
 
-              {/* The structured stream is the panel's face; the raw text pane
-                  still answers for jobs that produced no events at all (a run
-                  that failed before its first block, or a settled job restored
-                  from `finalOutput`). */}
-              {events !== undefined && events.list.length > 0 ? (
-                <EventView
-                  jobId={current.id}
-                  events={events.list}
-                  truncated={events.truncated}
-                />
-              ) : (
-                <OutputView
-                  jobId={current.id}
-                  text={output?.text ?? (detail?.finalOutput ?? '')}
-                  truncated={output?.truncated ?? false}
-                />
-              )}
+                {/* The structured stream is the panel's face; the raw text pane
+                    still answers for jobs that produced no events at all (a run
+                    that failed before its first block, or a settled job restored
+                    from `finalOutput`). */}
+                {events !== undefined && events.list.length > 0 ? (
+                  <EventView
+                    jobId={current.id}
+                    events={events.list}
+                    truncated={events.truncated}
+                  />
+                ) : (
+                  <OutputView
+                    jobId={current.id}
+                    text={output?.text ?? (detail?.finalOutput ?? '')}
+                    truncated={output?.truncated ?? false}
+                  />
+                )}
 
-              <div className={CSS.actions}>
-                {isLive(current) ? (
-                  <button type="button" className={`${CSS.button} ${CSS.danger}`} onClick={() => { onCancel(current.id) }}>
-                    {t('action.cancel')}
+                <div className={CSS.actions}>
+                  {isLive(current) ? (
+                    <button type="button" className={`${CSS.button} ${CSS.danger}`} onClick={() => { onCancel(current.id) }}>
+                      {t('action.cancel')}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={CSS.button}
+                    disabled={(output?.text ?? detail?.finalOutput ?? '') === ''}
+                    onClick={() => {
+                      void copy(output?.text ?? detail?.finalOutput ?? '').then((done) => { if (done) flashCopied('output') })
+                    }}
+                  >
+                    {copied === 'output' ? t('action.copied') : t('action.copyOutput')}
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className={CSS.button}
-                  disabled={(output?.text ?? detail?.finalOutput ?? '') === ''}
-                  onClick={() => {
-                    void copy(output?.text ?? detail?.finalOutput ?? '').then((done) => { if (done) flashCopied('output') })
-                  }}
-                >
-                  {copied === 'output' ? t('action.copied') : t('action.copyOutput')}
-                </button>
-                <button
-                  type="button"
-                  className={CSS.button}
-                  disabled={detail?.claudeSessionId === undefined}
-                  title={t('detail.session.hint')}
-                  onClick={() => {
-                    void copy(detail?.claudeSessionId ?? '').then((done) => { if (done) flashCopied('session') })
-                  }}
-                >
-                  {copied === 'session' ? t('action.copied') : t('action.copySession')}
-                </button>
-              </div>
-            </>
-          )}
+                  <button
+                    type="button"
+                    className={CSS.button}
+                    disabled={detail?.claudeSessionId === undefined}
+                    title={t('detail.session.hint')}
+                    onClick={() => {
+                      void copy(detail?.claudeSessionId ?? '').then((done) => { if (done) flashCopied('session') })
+                    }}
+                  >
+                    {copied === 'session' ? t('action.copied') : t('action.copySession')}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     )

@@ -12,6 +12,34 @@
 /** Class-name prefix shared by every rule below. */
 export const CSS = {
   root: 'ccp-root',
+  body: 'ccp-body',
+  usage: 'ccp-usage',
+  usageHead: 'ccp-usageHead',
+  usagePlan: 'ccp-usagePlan',
+  usageTier: 'ccp-usageTier',
+  usageCache: 'ccp-usageCache',
+  usageStale: 'ccp-usageStale',
+  usageSpacer: 'ccp-usageSpacer',
+  usageBadge: 'ccp-usageBadge',
+  usageBadgeNormal: 'ccp-usageBadgeNormal',
+  usageBadgeCaution: 'ccp-usageBadgeCaution',
+  usageBadgeBlocked: 'ccp-usageBadgeBlocked',
+  usageBadgeUnknown: 'ccp-usageBadgeUnknown',
+  usageAdvice: 'ccp-usageAdvice',
+  usageRefresh: 'ccp-usageRefresh',
+  usageBars: 'ccp-usageBars',
+  usageRow: 'ccp-usageRow',
+  usageRowLabel: 'ccp-usageRowLabel',
+  usageTrack: 'ccp-usageTrack',
+  usageFill: 'ccp-usageFill',
+  usageFillWarn: 'ccp-usageFillWarn',
+  usageFillDanger: 'ccp-usageFillDanger',
+  usageRowMeta: 'ccp-usageRowMeta',
+  usageChips: 'ccp-usageChips',
+  usageChipsLabel: 'ccp-usageChipsLabel',
+  usageChip: 'ccp-usageChip',
+  usageNote: 'ccp-usageNote',
+  usageError: 'ccp-usageError',
   list: 'ccp-list',
   listTitle: 'ccp-listTitle',
   row: 'ccp-row',
@@ -80,7 +108,8 @@ const CSS_TEXT = `
   --ccp-composer-clearance: 148px;
   box-sizing: border-box;
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   height: 100%;
   min-height: 0;
   padding: 12px 16px var(--ccp-composer-clearance);
@@ -88,6 +117,129 @@ const CSS_TEXT = `
   font-size: 13px;
 }
 .ccp-root * { box-sizing: border-box; }
+/* List + output pane; the usage bar sits above this row. */
+.ccp-body {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- usage bar --- */
+.ccp-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-fill-l1);
+}
+.ccp-usageHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.ccp-usagePlan { font-weight: 600; color: var(--dsw-alias-label-primary); }
+.ccp-usageTier { color: var(--dsw-alias-label-secondary); }
+.ccp-usageCache {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ccp-usageStale { color: var(--dsw-alias-state-warning, #c98a2e); }
+.ccp-usageSpacer { flex: 1; }
+.ccp-usageBadge {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+}
+.ccp-usageBadgeNormal { color: var(--dsw-alias-state-success, #3d9970); }
+.ccp-usageBadgeCaution { color: var(--dsw-alias-state-warning, #c98a2e); }
+.ccp-usageBadgeBlocked { color: var(--dsw-alias-state-error, #d05353); }
+.ccp-usageBadgeUnknown { color: var(--dsw-alias-label-tertiary); }
+.ccp-usageAdvice {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+.ccp-usageRefresh {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.ccp-usageRefresh:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.ccp-usageRefresh:disabled { opacity: 0.5; cursor: default; }
+.ccp-usageBars { display: flex; flex-direction: column; gap: 4px; }
+.ccp-usageRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ccp-usageRowLabel { flex: none; width: 56px; }
+.ccp-usageTrack {
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-fill-l2);
+  overflow: hidden;
+}
+.ccp-usageFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-business-primary);
+  transition: width 240ms ease;
+}
+.ccp-usageFillWarn { background: var(--dsw-alias-state-warning, #c98a2e); }
+.ccp-usageFillDanger { background: var(--dsw-alias-state-error, #d05353); }
+.ccp-usageRowMeta { flex: none; white-space: nowrap; }
+.ccp-usageChips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 16px;
+}
+.ccp-usageChipsLabel { color: var(--dsw-alias-label-tertiary); }
+.ccp-usageChip {
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ccp-usageNote {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+.ccp-usageError {
+  color: var(--dsw-alias-state-error, #d05353);
+  font-size: 11px;
+  line-height: 16px;
+}
 .ccp-list {
   display: flex;
   flex-direction: column;

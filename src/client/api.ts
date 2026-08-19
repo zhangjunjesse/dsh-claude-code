@@ -7,7 +7,18 @@
  * `{ args: { … } }`; it answers with `{ ok:true, value }` or `{ ok:false, error }`,
  * which is re-validated here rather than trusted.
  */
-import type { ClaudeEvent, ConnectionService, JobInfo, ReadEventsResult, ReadOutputResult, RpcResult } from './types.js'
+import type {
+  ClaudeEvent,
+  ConnectionService,
+  JobInfo,
+  ReadEventsResult,
+  ReadOutputResult,
+  RpcResult,
+  UsageAdvice,
+  UsageLimitView,
+  UsageView,
+  UsageWindowView,
+} from './types.js'
 
 /** One wire failure, carrying the gateway's error code when it supplied one. */
 export class ClaudeCodeApiError extends Error {
@@ -72,12 +83,89 @@ function toEvent(raw: unknown): ClaudeEvent | null {
   }
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/** One quota window, or null when the host had no data for it. */
+function toWindow(raw: unknown): UsageWindowView | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const window = raw as Record<string, unknown>
+  return {
+    utilizationPercent: numberOrNull(window['utilizationPercent']),
+    resetsAt: stringOrNull(window['resetsAt']),
+  }
+}
+
+const ADVICES: readonly UsageAdvice[] = ['normal', 'caution', 'blocked', 'unknown']
+
+/**
+ * Re-shape the `claudeCode/usage` payload onto `UsageView`.
+ *
+ * The bar must never break the panel, so this is a whitelist: unknown keys are
+ * dropped, a malformed field degrades to `null` / `false` / `[]`, and an
+ * unrecognised advice value falls back to `unknown`.
+ */
+function toUsage(raw: unknown): UsageView {
+  const snapshot = record(raw)
+  const subscription = record(snapshot['subscription'])
+  const cache = record(snapshot['cache'])
+  const advice = snapshot['advice']
+  const limits: UsageLimitView[] = []
+  if (Array.isArray(snapshot['limits'])) {
+    for (const item of snapshot['limits']) {
+      if (typeof item !== 'object' || item === null) continue
+      const limit = item as Record<string, unknown>
+      limits.push({
+        kind: stringOrNull(limit['kind']) ?? 'unknown',
+        group: stringOrNull(limit['group']),
+        percent: numberOrNull(limit['percent']),
+        severity: stringOrNull(limit['severity']),
+        resetsAt: stringOrNull(limit['resetsAt']),
+        scopeModel: stringOrNull(limit['scopeModel']),
+        isActive: limit['isActive'] === true,
+      })
+    }
+  }
+  return {
+    ok: snapshot['ok'] === true,
+    loggedIn: snapshot['loggedIn'] === true,
+    error: stringOrNull(snapshot['error']),
+    subscription: {
+      type: stringOrNull(subscription['type']),
+      rateLimitTier: stringOrNull(subscription['rateLimitTier']),
+      billingType: stringOrNull(subscription['billingType']),
+    },
+    fiveHour: toWindow(snapshot['fiveHour']),
+    sevenDay: toWindow(snapshot['sevenDay']),
+    limits,
+    advice: ADVICES.includes(advice as UsageAdvice) ? advice as UsageAdvice : 'unknown',
+    cache: {
+      fetchedAt: stringOrNull(cache['fetchedAt']),
+      ageMinutes: numberOrNull(cache['ageMinutes']),
+      maybeStale: cache['maybeStale'] === true,
+    },
+    warnings: Array.isArray(snapshot['warnings'])
+      ? snapshot['warnings'].filter((warning): warning is string => typeof warning === 'string')
+      : [],
+  }
+}
+
 /** The panel's API surface, bound to one connection service. */
 export interface ClaudeCodeApi {
   listJobs(sessionId: string, signal?: AbortSignal): Promise<JobInfo[]>
   readOutput(sessionId: string, jobId: string, fromOffset: number, signal?: AbortSignal): Promise<ReadOutputResult>
   readEvents(sessionId: string, jobId: string, fromOffset: number, signal?: AbortSignal): Promise<ReadEventsResult>
   cancel(sessionId: string, jobId: string): Promise<'requested' | 'already-finished'>
+  getUsage(sessionId: string, signal?: AbortSignal): Promise<UsageView>
 }
 
 /** Bind the API surface to the client runtime's connection service. */
@@ -119,5 +207,6 @@ export function createApi(connection: ConnectionService): ClaudeCodeApi {
       }
     },
     cancel: (sessionId, jobId) => call<'requested' | 'already-finished'>('cancel', { sessionId, jobId }),
+    getUsage: async (sessionId, signal) => toUsage(await call<unknown>('usage', { sessionId }, signal)),
   }
 }

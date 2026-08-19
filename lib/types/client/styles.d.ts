@@ -11,6 +11,34 @@
 /** Class-name prefix shared by every rule below. */
 export declare const CSS: {
     readonly root: "ccp-root";
+    readonly body: "ccp-body";
+    readonly usage: "ccp-usage";
+    readonly usageHead: "ccp-usageHead";
+    readonly usagePlan: "ccp-usagePlan";
+    readonly usageTier: "ccp-usageTier";
+    readonly usageCache: "ccp-usageCache";
+    readonly usageStale: "ccp-usageStale";
+    readonly usageSpacer: "ccp-usageSpacer";
+    readonly usageBadge: "ccp-usageBadge";
+    readonly usageBadgeNormal: "ccp-usageBadgeNormal";
+    readonly usageBadgeCaution: "ccp-usageBadgeCaution";
+    readonly usageBadgeBlocked: "ccp-usageBadgeBlocked";
+    readonly usageBadgeUnknown: "ccp-usageBadgeUnknown";
+    readonly usageAdvice: "ccp-usageAdvice";
+    readonly usageRefresh: "ccp-usageRefresh";
+    readonly usageBars: "ccp-usageBars";
+    readonly usageRow: "ccp-usageRow";
+    readonly usageRowLabel: "ccp-usageRowLabel";
+    readonly usageTrack: "ccp-usageTrack";
+    readonly usageFill: "ccp-usageFill";
+    readonly usageFillWarn: "ccp-usageFillWarn";
+    readonly usageFillDanger: "ccp-usageFillDanger";
+    readonly usageRowMeta: "ccp-usageRowMeta";
+    readonly usageChips: "ccp-usageChips";
+    readonly usageChipsLabel: "ccp-usageChipsLabel";
+    readonly usageChip: "ccp-usageChip";
+    readonly usageNote: "ccp-usageNote";
+    readonly usageError: "ccp-usageError";
     readonly list: "ccp-list";
     readonly listTitle: "ccp-listTitle";
     readonly row: "ccp-row";

@@ -45,6 +45,31 @@ export const zh = {
   'events.result': '完成',
   'error.prefix': '读取失败',
   'select.empty': '选择左边的任务查看输出',
+  'usage.title': '订阅额度',
+  'usage.plan.unknown': 'Claude 订阅',
+  'usage.fiveHour': '5 小时',
+  'usage.sevenDay': '7 天',
+  'usage.reset': '{n} 重置',
+  'usage.resetSoon': '约 {n} 重置',
+  'usage.scoped': '模型专项',
+  'usage.advice.normal': '正常',
+  'usage.advice.caution': '注意',
+  'usage.advice.blocked': '已阻塞',
+  'usage.advice.unknown': '未知',
+  'usage.adviceText.normal': '可以继续委派',
+  'usage.adviceText.caution': '偏高，建议减少并发委派',
+  'usage.adviceText.blocked': '接近/超过上限，暂时不要再委派',
+  'usage.adviceText.unknown': '缺少窗口数据',
+  'usage.refresh': '刷新',
+  'usage.refreshing': '刷新中…',
+  'usage.cached': '缓存于 {n} 分钟前',
+  'usage.cachedStale': '⚠️ 缓存于 {n} 分钟前，可能非实时',
+  'usage.cachedUnknown': '缓存时间未知',
+  'usage.loading': '额度加载中…',
+  'usage.loggedOut': '请先在终端运行一次 `claude` 完成登录',
+  'usage.failed': '额度读取失败：{n}',
+  'usage.retry': '重试',
+  'usage.noData': '暂无额度数据：运行过一次 claude 会话后才有',
 }
 
 /** English dictionary, key-identical to the Chinese source of truth. */
@@ -85,6 +110,31 @@ export const en: Record<keyof typeof zh, string> = {
   'events.result': 'Completed',
   'error.prefix': 'Read failed',
   'select.empty': 'Pick a job on the left to see its output',
+  'usage.title': 'Subscription usage',
+  'usage.plan.unknown': 'Claude subscription',
+  'usage.fiveHour': '5-hour',
+  'usage.sevenDay': '7-day',
+  'usage.reset': 'resets {n}',
+  'usage.resetSoon': 'resets ~{n}',
+  'usage.scoped': 'per-model',
+  'usage.advice.normal': 'normal',
+  'usage.advice.caution': 'caution',
+  'usage.advice.blocked': 'blocked',
+  'usage.advice.unknown': 'unknown',
+  'usage.adviceText.normal': 'safe to delegate',
+  'usage.adviceText.caution': 'high — delegate less in parallel',
+  'usage.adviceText.blocked': 'at/near the limit — hold off delegating',
+  'usage.adviceText.unknown': 'no window data',
+  'usage.refresh': 'Refresh',
+  'usage.refreshing': 'Refreshing…',
+  'usage.cached': 'cached {n} min ago',
+  'usage.cachedStale': '⚠️ cached {n} min ago, may be stale',
+  'usage.cachedUnknown': 'cache age unknown',
+  'usage.loading': 'Loading usage…',
+  'usage.loggedOut': 'Run `claude` once in a terminal to sign in',
+  'usage.failed': 'Usage read failed: {n}',
+  'usage.retry': 'Retry',
+  'usage.noData': 'No usage data yet — run one claude session first',
 }
 
 /** Translation key set. */
@@ -100,4 +150,9 @@ function isChinese(): boolean {
 /** Resolve one copy key in the active language. */
 export function t(key: LocaleKey): string {
   return (isChinese() ? zh : en)[key]
+}
+
+/** Resolve one copy key and substitute its single `{n}` placeholder. */
+export function tf(key: LocaleKey, value: string | number): string {
+  return t(key).replace('{n}', String(value))
 }

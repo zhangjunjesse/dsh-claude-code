@@ -16,6 +16,7 @@
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { type ClaudeEvent, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js';
+import { type UsageAdvice } from './usage.js';
 /** One incremental output read as the panel sees it. */
 export interface ReadOutputResult {
     text: string;
@@ -32,10 +33,58 @@ export interface ReadEventsResult {
 }
 /** Cancellation outcome (mirrors the jobs seam's own vocabulary). */
 export type CancelOutcome = 'requested' | 'already-finished';
+/** One rolling usage window on the wire (never `undefined`). */
+export interface UsageWindowWire {
+    utilizationPercent: number | null;
+    resetsAt: string | null;
+}
+/** One `limits[]` row on the wire; `scopeModel` carries the per-model limits. */
+export interface UsageLimitWire {
+    kind: string;
+    group: string | null;
+    percent: number | null;
+    severity: string | null;
+    resetsAt: string | null;
+    scopeModel: string | null;
+    isActive: boolean;
+}
+/** Coarse plan descriptors; nothing here identifies an account. */
+export interface UsageSubscriptionWire {
+    type: string | null;
+    rateLimitTier: string | null;
+    billingType: string | null;
+}
+/** Freshness of the claude CLI's own cache. */
+export interface UsageCacheWire {
+    fetchedAt: string | null;
+    ageMinutes: number | null;
+    maybeStale: boolean;
+    source: string;
+}
+/**
+ * `claudeCode/usage` payload: the quota snapshot reduced to what the panel's
+ * usage bar renders. Every key is always present and never `undefined` — the
+ * api-gateway rejects an `undefined` value, so absence is spelled `null`. The
+ * dollar-spend and extra-usage blocks stay off the wire: no view renders them.
+ */
+export interface UsageSnapshotWire {
+    ok: boolean;
+    loggedIn: boolean;
+    error: string | null;
+    subscription: UsageSubscriptionWire;
+    fiveHour: UsageWindowWire | null;
+    sevenDay: UsageWindowWire | null;
+    limits: UsageLimitWire[];
+    advice: UsageAdvice;
+    cache: UsageCacheWire;
+    warnings: string[];
+}
 /** `ctx.claudeCode` — the monitor panel's own remote service. */
 export declare class ClaudeCodeRemote extends TypertRemoteService {
     private tracker;
-    constructor(ctx: Context, tracker: JobTracker);
+    private pathToClaudeCodeExecutable?;
+    private usageMemo?;
+    constructor(ctx: Context, tracker: JobTracker, pathToClaudeCodeExecutable?: string);
     /**
      * Every claude-code delegation owned by one session, with the metadata the
      * jobs mirror does not carry (cost, turns, claude session id, final text).
@@ -59,4 +108,18 @@ export declare class ClaudeCodeRemote extends TypertRemoteService {
      * notification (which `ctx.jobs.kill()` would have swallowed).
      */
     cancel(sessionId: string, jobId: string): Promise<CancelOutcome>;
+    /**
+     * The local subscription's quota, for the panel's usage bar. This reads the
+     * claude CLI's own cache only (`readUsageSnapshot`); no refresh is triggered,
+     * since an active refresh would burn real quota — the UI's refresh button
+     * just re-reads that cache.
+     *
+     * Nothing here is per-job, so the session is only checked for shape: the
+     * quota belongs to the machine's claude login, not to one delegation, and
+     * the gateway's `trusted-host` authority already fences the endpoint.
+     *
+     * Never throws: a failure comes back as `ok:false` + `error` so the bar can
+     * degrade to a retryable message instead of breaking the panel.
+     */
+    usage(sessionId: string): Promise<UsageSnapshotWire>;
 }

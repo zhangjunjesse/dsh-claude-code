@@ -13,7 +13,7 @@ import { DEFAULT_STALE_AFTER_MINUTES, readUsageSnapshot, renderUsage } from './u
 export const name = 'claude-code'
 export const inject = ['tools', 'skills']
 
-const CLIENT_APP = 'dsh-claude-code/0.3.2'
+const CLIENT_APP = 'dsh-claude-code/0.3.3'
 
 /** Cap for the live-output buffers kept per background job. */
 const MAX_LIVE_BUFFER = 500_000
@@ -812,7 +812,9 @@ export function apply(ctx: Context, config: Config) {
   // monitor panel (client half) reads it through. Both are process-local and go
   // away with the plugin's fiber.
   const tracker = new JobTracker()
-  new ClaudeCodeRemote(ctx, tracker)
+  // The remote also serves the panel's usage bar, so it gets the same claude
+  // executable the usage tool reads through.
+  new ClaudeCodeRemote(ctx, tracker, config.pathToClaudeCodeExecutable)
 
   ctx.tools.register(defineTool({
     name: 'claude_code_usage',

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.3
+- **Usage bar in the monitor panel**: the Claude Code tab now opens with the subscription's quota on top — plan tier (`Claude Max · 20x`), 5-hour and 7-day progress bars with reset times (amber from 50%, red from 80%), a chip per per-model limit (`Fable 0%`), a normal/caution/blocked badge, cache age and a refresh button — served by a new `claudeCode/usage` remote that re-reads the claude CLI's own local cache (no quota is spent, no account identity is returned) and degrades to a retryable message when it cannot.
+
 ## 0.3.2
 - **Two-stage timeout with periodic warnings**: `timeoutMs` now defaults to 2 hours (hard abort when reached). New `warnTimeoutMs` (default 1h) emits a `warning` event in the monitor panel (prominent amber banner, no abort), repeated every `warnIntervalMs` (default 30m) while the task keeps running. All three are per-call overridable (`timeoutMs` / `warnTimeoutMs` / `warnIntervalMs` tool args). The delegation skill now tells the agent to surface warnings to the user instead of force-killing.
 

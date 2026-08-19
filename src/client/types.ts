@@ -113,3 +113,50 @@ export interface ReadEventsResult {
   truncated: boolean
   status: 'running' | 'completed' | 'failed' | 'killed'
 }
+
+/** Go/no-go signal the host derives from the windows and the limit severities. */
+export type UsageAdvice = 'normal' | 'caution' | 'blocked' | 'unknown'
+
+/** One rolling quota window (5h / 7d) as the usage bar renders it. */
+export interface UsageWindowView {
+  utilizationPercent: number | null
+  resetsAt: string | null
+}
+
+/** One `limits[]` row; a non-null `scopeModel` makes it a per-model limit. */
+export interface UsageLimitView {
+  kind: string
+  group: string | null
+  percent: number | null
+  severity: string | null
+  resetsAt: string | null
+  scopeModel: string | null
+  isActive: boolean
+}
+
+/**
+ * The quota snapshot as `claudeCode/usage` returns it (host `UsageSnapshotWire`).
+ *
+ * Absence is always `null`, never `undefined` — the gateway refuses to encode
+ * `undefined`, and `api.getUsage` re-validates every field anyway.
+ */
+export interface UsageView {
+  ok: boolean
+  loggedIn: boolean
+  error: string | null
+  subscription: {
+    type: string | null
+    rateLimitTier: string | null
+    billingType: string | null
+  }
+  fiveHour: UsageWindowView | null
+  sevenDay: UsageWindowView | null
+  limits: UsageLimitView[]
+  advice: UsageAdvice
+  cache: {
+    fetchedAt: string | null
+    ageMinutes: number | null
+    maybeStale: boolean
+  }
+  warnings: string[]
+}

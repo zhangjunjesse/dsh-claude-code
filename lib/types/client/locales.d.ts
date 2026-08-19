@@ -44,6 +44,31 @@ export declare const zh: {
     'events.result': string;
     'error.prefix': string;
     'select.empty': string;
+    'usage.title': string;
+    'usage.plan.unknown': string;
+    'usage.fiveHour': string;
+    'usage.sevenDay': string;
+    'usage.reset': string;
+    'usage.resetSoon': string;
+    'usage.scoped': string;
+    'usage.advice.normal': string;
+    'usage.advice.caution': string;
+    'usage.advice.blocked': string;
+    'usage.advice.unknown': string;
+    'usage.adviceText.normal': string;
+    'usage.adviceText.caution': string;
+    'usage.adviceText.blocked': string;
+    'usage.adviceText.unknown': string;
+    'usage.refresh': string;
+    'usage.refreshing': string;
+    'usage.cached': string;
+    'usage.cachedStale': string;
+    'usage.cachedUnknown': string;
+    'usage.loading': string;
+    'usage.loggedOut': string;
+    'usage.failed': string;
+    'usage.retry': string;
+    'usage.noData': string;
 };
 /** English dictionary, key-identical to the Chinese source of truth. */
 export declare const en: Record<keyof typeof zh, string>;
@@ -51,3 +76,5 @@ export declare const en: Record<keyof typeof zh, string>;
 export type LocaleKey = keyof typeof zh;
 /** Resolve one copy key in the active language. */
 export declare function t(key: LocaleKey): string;
+/** Resolve one copy key and substitute its single `{n}` placeholder. */
+export declare function tf(key: LocaleKey, value: string | number): string;
