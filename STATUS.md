@@ -27,13 +27,18 @@
 
 ## 待办（按优先级）
 - [ ] **重启 DSH 桌面**（用户操作）：0.2.0 + 0.3.0 都需重启才生效
+## 待办（按优先级）
+- [ ] **重启 DSH**（用户操作）：0.2.0 + 0.3.0 + parallel-dev 都需重启才生效
+- [ ] **用户实际 profile 是 web（不是 desktop！）**——0.3.0 已补装到 web profile：
+  - `~/.dsh/profiles/web`：`pnpm add "dsh-claude-code@file:<仓库路径>"` + package.json bundles 已加 `dsh-claude-code`
+  - 依赖解析已验证（@deepseek-ai 核心 → DSH 内置 app.asar.unpacked；claude-agent-sdk → web node_modules）
+  - desktop profile 也部署过（0.3.0），双保险
 - [ ] **重启后实机验证 0.3.0**（claude 无法自测的部分）：
-  1. DevTools 裸调 `fetch('/api/claudeCode/listJobs', {method:'POST', body: JSON.stringify({args:{sessionId}}), headers:{'Content-Type':'application/json'}})` 确认 gateway SRC 声明被 claim；若 404 → 按 UI-DESIGN-0.3.0.md §3.2 降级 ctx.webServer 路由
-  2. 会话头出现第三个 tab「Claude Code」；派 run_in_background 任务 → 列表/实时输出/取消 UI 验证
-  3. 模型侧 job_output 游标不受 UI 读取影响（坑 A 绕行验证）
-  4. claude_code_usage 在 DSH 内调用
-- [ ] 可选：git push + npm publish（需 npm login）
-- [ ] 可选：proxy 配置写进 desktop profile 的 cordis.patch.yml
+  1. 会话头出现第三个 tab「Claude Code」（对话/轨迹 右边）
+  2. DevTools 裸调 `fetch('/api/claudeCode/listJobs', {method:'POST', body: JSON.stringify({args:{sessionId}}), headers:{'Content-Type':'application/json'}})` 确认 gateway SRC 声明被 claim；若 404 → 按 UI-DESIGN-0.3.0.md §3.2 降级 ctx.webServer 路由
+  3. 派 run_in_background 任务 → 列表/实时输出/取消 UI 验证
+  4. claude_code_usage 工具可用；parallel-dev / claude-code-delegation skill 可见
+- [ ] 可选：git push + npm publish（需 npm login；publish 后 web/desktop 可改用 registry 版本）
 
 ## 已知实现差异（claude 记录，来自源码核对）
 - SRC 派发按方法参数名取 wire 字段（remote.ts 参数不能叫 session/agent，禁止解构）；gateway 结果必须纯 JSON（不用 undefined）；seed 静态表实为 10 项；dsh.client.inject 不参与 boot 时序（真正时序来自模块自身 inject 数组）
