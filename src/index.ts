@@ -6,17 +6,20 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDefinition, Options } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { JobTracker, type TrackedSettlement } from './tracker.js'
+import { JobTracker, createEventBuffer, type ClaudeEvent, type EventBuffer, type TrackedSettlement } from './tracker.js'
 import { ClaudeCodeRemote } from './remote.js'
 import { DEFAULT_STALE_AFTER_MINUTES, readUsageSnapshot, renderUsage } from './usage.js'
 
 export const name = 'claude-code'
 export const inject = ['tools', 'skills']
 
-const CLIENT_APP = 'dsh-claude-code/0.3.0'
+const CLIENT_APP = 'dsh-claude-code/0.3.2'
 
 /** Cap for the live-output buffers kept per background job. */
 const MAX_LIVE_BUFFER = 500_000
+
+/** Cap for one tool_result / result payload carried on the event stream. */
+const MAX_EVENT_TEXT = 2000
 
 const PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] as const
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -38,6 +41,8 @@ export interface Config {
   permissionMode: string
   maxTurns: number
   timeoutMs: number
+  warnTimeoutMs: number
+  warnIntervalMs: number
   cwd?: string
   allowedTools?: string[]
   pathToClaudeCodeExecutable?: string
@@ -57,7 +62,9 @@ export const Config: z<Config> = z.object({
     .description("Claude Code permission mode: default, acceptEdits, bypassPermissions, plan, dontAsk, or auto.")
     .default('acceptEdits'),
   maxTurns: z.number().description('Maximum Claude Code agentic turns per task.').default(100),
-  timeoutMs: z.number().description('Cooperative timeout budget for one call (ms).').default(600000),
+  timeoutMs: z.number().description('Hard timeout budget for one call (ms); background tasks are aborted once it is reached.').default(7200000),
+  warnTimeoutMs: z.number().description('Emit a warning event (do NOT abort) after the task has run this long (ms); 0 disables.').default(3600000),
+  warnIntervalMs: z.number().description('Repeat the warning every N ms while the task keeps running past warnTimeoutMs (ms); 0 disables repeats.').default(1800000),
   cwd: z.string().description('Working directory for Claude Code; defaults to the DSH workspace cwd.'),
   allowedTools: z.array(z.string()).description('Claude Code built-in tools to allow.'),
   pathToClaudeCodeExecutable: z.string().description('Path to the claude executable; auto-detected when omitted.'),
@@ -123,7 +130,7 @@ const DELEGATION_SKILL: SkillRegistration = {
     '- 用 DSH 自带的 job_output 增量读取 Claude Code 的实时输出（每次只给上次之后的新内容），job_list 看在跑的任务，job_kill 取消。',
     '- 任务结束时 DSH 会自动推送完成通知，不需要轮询。',
     '- 短任务（几十秒内）直接前台调用即可，前台会把最终文本一次性返回。',
-    '- Web 端还有个「Claude Code」监控面板（会话头第三个标签页）：任务列表 + 终端式实时输出 + 取消，人类用户可以自己盯，你不用替他转述实时输出。',
+    '- Web 端还有个「Claude Code」监控面板（会话头第三个标签页）：任务列表 + 原生风格实时输出（工具卡片带参数与结果、思考块可折叠）+ 取消，人类用户可以自己盯，你不用替他转述实时输出。',
     '',
     '## 派活前看额度（claude_code_usage）',
     '- 纯本地读缓存，零 token、毫秒级：拿到 5 小时 / 7 天窗口用量、重置时间、订阅档位和一个 advice（normal / caution / blocked）。',
@@ -146,6 +153,10 @@ const DELEGATION_SKILL: SkillRegistration = {
     '- 403 / 出网 IP 是数据中心 IP：给插件配置设 proxy（如 http://127.0.0.1:7897），或给 DSH 进程设 HTTPS_PROXY / HTTP_PROXY（指向本机 Clash 等代理）后重启 dsh 再调用。',
     '- bypassPermissions 报错：这是有意的安全开关，需要在插件配置里显式设 allowDangerouslySkipPermissions: true。',
     '',
+    '## 超时与告警（两级超时）',
+    '- 硬超时 timeoutMs（默认 2h）：到点自动中止任务（failed timed out）；可用参数覆盖。',
+    '- 告警 warnTimeoutMs（默认 1h）+ 周期 warnIntervalMs（默认 30min）：不中止，只在面板事件流里醒目标注"任务已运行 X"提醒处理。',
+    '- 收到告警且任务无明显进展时：建议让用户决策——继续等 / 取消 / 用 resume 缩小范围重派；不要自作主张强杀。',
     '## 成本与延迟',
     '- 每次约 10 秒起步、按订阅计费（小任务实测约 0.1~0.2 美元）。',
     '- 琐碎小问不派；一个"完整子任务"才派。',
@@ -328,12 +339,59 @@ function toAgentDefinitions(subagents?: Record<string, SubagentConfig>): Record<
   return Object.keys(agents).length ? agents : undefined
 }
 
+/** JSON or nothing — used for values that only ever travel over the wire. */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/** Cap one event payload, marking the cut so the panel can say so. */
+function capEventText(text: string): string {
+  return text.length > MAX_EVENT_TEXT ? `${text.slice(0, MAX_EVENT_TEXT)}…[truncated]` : text
+}
+
+/** Keep a tool_use input only when it survives a JSON round trip. */
+function toEventInput(input: unknown): unknown {
+  try {
+    JSON.stringify(input)
+    return input
+  } catch {
+    return String(input)
+  }
+}
+
+/**
+ * Flatten a `tool_result` payload into one plain string: the SDK hands it over
+ * as a bare string or as a block array (text / image / anything a tool emits).
+ */
+function toResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (content === undefined || content === null) return ''
+  if (Array.isArray(content)) {
+    return content.map((part: any) => {
+      if (typeof part === 'string') return part
+      if (part && typeof part === 'object') {
+        if (typeof part.text === 'string') return part.text
+        if (part.type === 'image') return '[image]'
+      }
+      return safeJson(part)
+    }).join('\n')
+  }
+  return safeJson(content)
+}
+
 interface RunRequest {
   task: string
   cwd: string
   model: string
   permissionMode: string
   maxTurns: number
+  timeoutMs: number
+  warnTimeoutMs: number
+  warnIntervalMs: number
   allowedTools?: string[]
   pathToClaudeCodeExecutable?: string
   resume?: string
@@ -395,10 +453,21 @@ function buildQueryOptions(req: RunRequest, abort: AbortController): Options {
   return options
 }
 
+/**
+ * Run one delegation.
+ *
+ * Two independent observers may follow it. `onDelta` is the TEXT stream the
+ * model's `job_output` consumes — token-level, append-only, unchanged since
+ * 0.2.0. `onEvent` is the STRUCTURED stream the monitor panel renders: one
+ * event per completed content block, in arrival order. Partial deltas are
+ * deliberately not mirrored into events, so the panel paints whole blocks
+ * instead of flickering character by character.
+ */
 async function runClaude(
   req: RunRequest,
   abort: AbortController,
   onDelta?: (text: string) => void,
+  onEvent?: (event: ClaudeEvent) => void,
 ): Promise<RunOutcome> {
   let output = ''
   let sessionId = ''
@@ -418,11 +487,44 @@ async function runClaude(
       if (msg.type === 'assistant') {
         sessionId = msg.session_id
         if (msg.error) failure = msg.error
-        for (const block of msg.message.content) {
-          if (block.type === 'text') output += block.text
-          else if (block.type === 'tool_use') {
+        for (const block of msg.message.content as any[]) {
+          if (block.type === 'text') {
+            output += block.text
+            if (block.text) onEvent?.({ type: 'text', text: block.text })
+          } else if (block.type === 'thinking') {
+            const thinking = typeof block.thinking === 'string' ? block.thinking : ''
+            if (thinking) {
+              onEvent?.({
+                type: 'thinking',
+                thinking,
+                ...(typeof block.signature === 'string' ? { signature: block.signature } : {}),
+              })
+            }
+          } else if (block.type === 'tool_use') {
             toolsUsed.add(block.name)
             onDelta?.(`\n[tool] ${block.name}\n`)
+            onEvent?.({
+              type: 'tool_use',
+              ...(typeof block.id === 'string' ? { id: block.id } : {}),
+              name: String(block.name),
+              input: toEventInput(block.input),
+            })
+          }
+        }
+      } else if (msg.type === 'user') {
+        // Tool results come back as a user turn. Replays (a resumed session
+        // re-emitting its history) would duplicate the panel's stream.
+        const raw = msg as any
+        const content = raw.message?.content
+        if (raw.isReplay !== true && Array.isArray(content)) {
+          for (const block of content as any[]) {
+            if (block?.type !== 'tool_result') continue
+            onEvent?.({
+              type: 'tool_result',
+              tool_use_id: typeof block.tool_use_id === 'string' ? block.tool_use_id : null,
+              content: capEventText(toResultText(block.content)),
+              ...(block.is_error === true ? { isError: true } : {}),
+            })
           }
         }
       } else if (msg.type === 'stream_event') {
@@ -435,6 +537,7 @@ async function runClaude(
         sessionId = msg.session_id
         numTurns = Number(msg.num_turns ?? 0)
         durationMs = Number(msg.duration_ms ?? 0)
+        let resultText = ''
         if (msg.subtype === 'success') {
           costUsd = typeof msg.total_cost_usd === 'number' ? msg.total_cost_usd : 0
           const usage = msg.usage as any
@@ -443,13 +546,23 @@ async function runClaude(
             outputTokens = Number(usage.output_tokens ?? 0)
           }
           if (msg.structured_output !== undefined) structuredOutput = msg.structured_output
+          if (typeof msg.result === 'string') resultText = msg.result
           if (!output.trim() && typeof msg.result === 'string') output = msg.result
         } else {
           const raw = msg as any
           const detail = raw.result ?? raw.error ?? (Array.isArray(raw.errors) && raw.errors.length ? raw.errors.join('; ') : undefined)
           const text = typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : ''
           failure = text ? `${msg.subtype}: ${text}` : msg.subtype
+          resultText = failure
         }
+        onEvent?.({
+          type: 'result',
+          text: capEventText(resultText),
+          costUsd,
+          numTurns,
+          durationMs,
+          ...(msg.subtype === 'success' ? {} : { isError: true }),
+        })
       }
     }
   } catch (err) {
@@ -539,6 +652,7 @@ interface JobOutcome {
 /** Everything the tracker needs from inside the job's `run()` closure. */
 interface JobHandles {
   read(fromOffset: number): { text: string, nextOffset: number, truncated: boolean }
+  events: EventBuffer
   cancelFromUi(): boolean
   done: Promise<JobOutcome>
   settlement(): TrackedSettlement
@@ -547,10 +661,12 @@ interface JobHandles {
 function startBackgroundJob(
   jobs: any,
   req: RunRequest,
-  timeoutMs: number,
   owner: { id?: string } | undefined,
   tracker: JobTracker,
 ): string {
+  const timeoutMs = req.timeoutMs
+  const warnTimeoutMs = req.warnTimeoutMs
+  const warnIntervalMs = req.warnIntervalMs
   const label = req.task.replace(/\s+/g, ' ').trim().slice(0, 60)
   // `run()` executes synchronously inside `jobs.start()`, so these handles are
   // set by the time the registry hands back the job id.
@@ -564,6 +680,7 @@ function startBackgroundJob(
       const abort = new AbortController()
       const pending = createBuffer()
       const full = createBuffer()
+      const events = createEventBuffer()
       let cancelled = false
       let cancelledFromUi = false
       let timedOut = false
@@ -576,6 +693,8 @@ function startBackgroundJob(
         full.append(text)
       }
 
+      const onEvent = (event: ClaudeEvent) => { events.append(event) }
+
       const cancel = (fromUi: boolean) => {
         if (settled || cancelled) return false
         cancelled = true
@@ -587,7 +706,7 @@ function startBackgroundJob(
 
       const done: Promise<JobOutcome> = (async () => {
         try {
-          const outcome = await runClaude(req, abort, onDelta)
+          const outcome = await runClaude(req, abort, onDelta, onEvent)
           const cost = typeof outcome.costUsd === 'number' ? `$${outcome.costUsd.toFixed(2)}` : '$0.00'
           const mins = Math.floor(outcome.durationMs / 60000)
           const secs = Math.floor((outcome.durationMs % 60000) / 1000)
@@ -629,8 +748,29 @@ function startBackgroundJob(
         timer.unref?.()
       }
 
+      // Two-stage timeout: warn first (warnTimeoutMs), then keep reminding
+      // every warnIntervalMs while the task still runs. Warnings go into the
+      // structured event stream (the panel renders them prominently) and do
+      // NOT abort the task — only the hard timeoutMs does.
+      const startedAt = Date.now()
+      if (warnTimeoutMs > 0 && (timeoutMs <= 0 || warnTimeoutMs < timeoutMs)) {
+        const warnTimer = setTimeout(function tick() {
+          const mins = Math.floor((Date.now() - startedAt) / 60000)
+          const hard = timeoutMs > 0
+            ? ` · 将于 ${Math.floor(timeoutMs / 60000)}m 后强制中止`
+            : ''
+          events.append({ type: 'warning', text: `⚠️ 任务已运行 ${mins}m${hard}` })
+          if (!settled && warnIntervalMs > 0) {
+            const next = setTimeout(tick, warnIntervalMs)
+            next.unref?.()
+          }
+        }, warnTimeoutMs)
+        warnTimer.unref?.()
+      }
+
       handles = {
         read: (fromOffset: number) => full.read(fromOffset),
+        events,
         cancelFromUi: () => cancel(true),
         done,
         settlement: () => settlement,
@@ -652,6 +792,7 @@ function startBackgroundJob(
       task: req.task,
       label,
       read: resolved.read,
+      events: resolved.events,
       cancelFromUi: resolved.cancelFromUi,
     })
     resolved.done.then(
@@ -799,6 +940,18 @@ export function apply(ctx: Context, config: Config) {
         type: 'boolean',
         description: 'Run the delegation as a DSH background job and return a jobId immediately; read live output with job_output, cancel with job_kill.',
       },
+      timeoutMs: {
+        type: 'integer',
+        description: 'Hard timeout in ms for this call (background tasks are aborted once reached); overrides the plugin config.',
+      },
+      warnTimeoutMs: {
+        type: 'integer',
+        description: 'Emit a warning event (no abort) after the task has run this long (ms); overrides the plugin config; 0 disables.',
+      },
+      warnIntervalMs: {
+        type: 'integer',
+        description: 'Repeat the warning every N ms while the task keeps running past warnTimeoutMs; overrides the plugin config; 0 disables repeats.',
+      },
     },
     output: {
       schema: {
@@ -846,6 +999,9 @@ export function apply(ctx: Context, config: Config) {
         model: args.model ?? config.model,
         permissionMode: args.permissionMode ?? config.permissionMode,
         maxTurns: args.maxTurns ?? config.maxTurns,
+        timeoutMs: args.timeoutMs ?? config.timeoutMs,
+        warnTimeoutMs: args.warnTimeoutMs ?? config.warnTimeoutMs,
+        warnIntervalMs: args.warnIntervalMs ?? config.warnIntervalMs,
         allowedTools: args.allowedTools ?? config.allowedTools,
         pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable,
         resume: args.resume,
@@ -865,7 +1021,7 @@ export function apply(ctx: Context, config: Config) {
       if (args.run_in_background) {
         const jobs = ctx.get('jobs')
         if (!jobs) throw new Error('background jobs unavailable: load @deepseek-ai/dsh-tool-jobs')
-        const jobId = startBackgroundJob(jobs, req, config.timeoutMs, exec.agent as { id?: string } | undefined, tracker)
+        const jobId = startBackgroundJob(jobs, req, exec.agent as { id?: string } | undefined, tracker)
         return { kind: 'background' as const, jobId }
       }
 

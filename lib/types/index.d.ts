@@ -17,6 +17,8 @@ export interface Config {
     permissionMode: string;
     maxTurns: number;
     timeoutMs: number;
+    warnTimeoutMs: number;
+    warnIntervalMs: number;
     cwd?: string;
     allowedTools?: string[];
     pathToClaudeCodeExecutable?: string;

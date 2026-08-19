@@ -30,6 +30,24 @@ export const CSS = {
   outputLine: 'ccp-outputLine',
   outputTool: 'ccp-outputTool',
   outputNotice: 'ccp-outputNotice',
+  events: 'ccp-events',
+  eventsBody: 'ccp-eventsBody',
+  evText: 'ccp-evText',
+  evThinking: 'ccp-evThinking',
+  evThinkingHead: 'ccp-evThinkingHead',
+  evThinkingBody: 'ccp-evThinkingBody',
+  evTool: 'ccp-evTool',
+  evToolHead: 'ccp-evToolHead',
+  evToolBadge: 'ccp-evToolBadge',
+  evToolParams: 'ccp-evToolParams',
+  evToolParamsFull: 'ccp-evToolParamsFull',
+  evToolResult: 'ccp-evToolResult',
+  evToolResultHead: 'ccp-evToolResultHead',
+  evToolResultBody: 'ccp-evToolResultBody',
+  evToolError: 'ccp-evToolError',
+  evResult: 'ccp-evResult',
+  evWarning: 'ccp-evWarning',
+  evMore: 'ccp-evMore',
   follow: 'ccp-follow',
   actions: 'ccp-actions',
   button: 'ccp-button',
@@ -39,6 +57,21 @@ export const CSS = {
   error: 'ccp-error',
   mono: 'ccp-mono',
 } as const
+
+/** How many tool-badge tints the stylesheet defines. */
+const TOOL_TONES = 6
+
+/**
+ * Stable tint for one tool name, so `Edit` always reads the same colour within
+ * and across runs. A tiny FNV-ish hash keeps it deterministic and dependency-free.
+ */
+export function toolToneClass(name: string): string {
+  let hash = 0
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) >>> 0
+  }
+  return `ccp-evTone${hash % TOOL_TONES}`
+}
 
 const STYLE_ID = 'dsh-claude-code-panel'
 
@@ -157,6 +190,173 @@ const CSS_TEXT = `
   color: var(--dsw-alias-state-business-primary);
 }
 .ccp-outputNotice { display: block; color: var(--dsw-alias-label-tertiary); }
+
+/* --- structured event stream (native-style rendering) --- */
+.ccp-events {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-fill-l1);
+  overflow: hidden;
+}
+.ccp-eventsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  overflow: auto;
+  padding: 10px 12px;
+}
+.ccp-evText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+.ccp-evThinking {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-tertiary);
+  font-style: italic;
+}
+.ccp-evThinkingHead {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.ccp-evThinkingHead:hover { color: var(--dsw-alias-label-secondary); }
+.ccp-evThinkingBody {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+}
+.ccp-evTool {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-fill-l2);
+}
+.ccp-evToolHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ccp-evToolBadge {
+  flex: none;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+.ccp-evTone0 { color: var(--dsw-alias-state-business-primary); }
+.ccp-evTone1 { color: var(--dsw-alias-state-success, #3d9970); }
+.ccp-evTone2 { color: var(--dsw-alias-state-warning, #c98a2e); }
+.ccp-evTone3 { color: var(--dsw-alias-state-error, #d05353); }
+.ccp-evTone4 { color: var(--dsw-alias-label-secondary); }
+.ccp-evTone5 { color: var(--dsw-alias-state-business-secondary, #7a6ff0); }
+.ccp-evToolParams {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.ccp-evToolParamsFull {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+.ccp-evToolResult {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+}
+.ccp-evToolResultHead {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.ccp-evToolResultBody {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+.ccp-evToolError { color: var(--dsw-alias-state-error, #d05353); }
+.ccp-evWarning {
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-state-warning, #c98a1f);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warning, #c98a1f) 12%, transparent);
+  color: var(--dsw-alias-state-warning, #c98a1f);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+.ccp-evResult {
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.ccp-evMore {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-state-business-primary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.ccp-evMore:hover { text-decoration: underline; }
+
 .ccp-follow {
   position: absolute;
   right: 12px;

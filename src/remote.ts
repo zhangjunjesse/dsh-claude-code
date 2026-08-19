@@ -15,11 +15,19 @@
  */
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Context } from '@deepseek-ai/cordis'
-import { toJobInfo, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js'
+import { toJobInfo, type ClaudeEvent, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js'
 
 /** One incremental output read as the panel sees it. */
 export interface ReadOutputResult {
   text: string
+  nextOffset: number
+  truncated: boolean
+  status: TrackedStatus
+}
+
+/** One incremental read of the structured event stream. */
+export interface ReadEventsResult {
+  events: ClaudeEvent[]
   nextOffset: number
   truncated: boolean
   status: TrackedStatus
@@ -57,6 +65,25 @@ export class ClaudeCodeRemote extends TypertRemoteService {
     const chunk = job.read(offset)
     return {
       text: chunk.text,
+      nextOffset: chunk.nextOffset,
+      truncated: chunk.truncated,
+      status: job.status,
+    }
+  }
+
+  /**
+   * Incremental structured events from an absolute offset — the same run the
+   * text stream describes, but block-shaped so the panel can render tool cards,
+   * thinking and results natively. Cursor-free like `readOutput`, so reading
+   * here never costs the model's `job_output` bytes.
+   */
+  @Remote
+  async readEvents(sessionId: string, jobId: string, fromOffset: number): Promise<ReadEventsResult> {
+    const job = this.tracker.require(sessionId, jobId)
+    const offset = Number.isSafeInteger(fromOffset) && fromOffset > 0 ? fromOffset : 0
+    const chunk = job.readEvents(offset)
+    return {
+      events: chunk.events,
       nextOffset: chunk.nextOffset,
       truncated: chunk.truncated,
       status: job.status,

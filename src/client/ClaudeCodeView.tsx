@@ -17,7 +17,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClaudeCodeApi } from './api.js'
-import type { JobInfo, JobStatus, JobView, ViewProps } from './types.js'
+import type { ClaudeEvent, JobInfo, JobStatus, JobView, ViewProps } from './types.js'
+import { EventView } from './EventView.js'
 import { OutputView } from './OutputView.js'
 import { CSS } from './styles.js'
 import { t, type LocaleKey } from './locales.js'
@@ -41,10 +42,18 @@ interface OutputState {
   truncated: boolean
 }
 
+/** One job's accumulated structured events plus its own absolute read cursor. */
+interface EventState {
+  list: ClaudeEvent[]
+  offset: number
+  truncated: boolean
+}
+
 /** Panel state that must survive the view being unmounted on a tab switch. */
 interface PanelState {
   selected?: string
   outputs: Map<string, OutputState>
+  events: Map<string, EventState>
 }
 
 const panels = new Map<string, PanelState>()
@@ -52,7 +61,7 @@ const panels = new Map<string, PanelState>()
 function panelOf(sessionId: string): PanelState {
   let panel = panels.get(sessionId)
   if (panel === undefined) {
-    panel = { outputs: new Map() }
+    panel = { outputs: new Map(), events: new Map() }
     panels.set(sessionId, panel)
     // Bounded cache: drop the least recently created session's panel state.
     while (panels.size > MAX_CACHED_SESSIONS) {
@@ -181,13 +190,21 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
 
     // Live output: one immediate read, then a 1s poll only while it runs. The
     // status is a dependency, so settling triggers exactly one final read.
+    // Two independent absolute cursors advance per tick: the structured event
+    // stream the panel renders, and the raw text stream kept as a fallback and
+    // as the source for "copy output".
     useEffect(() => {
       if (selected === undefined) return
       const jobId = selected
       const abort = new AbortController()
       let timer: ReturnType<typeof setInterval> | undefined
 
-      const pull = () => {
+      const onFailure = (failure: unknown) => {
+        if (abort.signal.aborted) return
+        setError(`${t('error.prefix')}: ${failure instanceof Error ? failure.message : String(failure)}`)
+      }
+
+      const pullText = () => {
         const state = panel.outputs.get(jobId) ?? { text: '', offset: 0, truncated: false }
         api.readOutput(sessionId, jobId, state.offset, abort.signal).then(
           (chunk) => {
@@ -199,11 +216,29 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
             })
             bumpRef.current()
           },
-          (failure: unknown) => {
-            if (abort.signal.aborted) return
-            setError(`${t('error.prefix')}: ${failure instanceof Error ? failure.message : String(failure)}`)
-          },
+          onFailure,
         )
+      }
+
+      const pullEvents = () => {
+        const state = panel.events.get(jobId) ?? { list: [], offset: 0, truncated: false }
+        api.readEvents(sessionId, jobId, state.offset, abort.signal).then(
+          (chunk) => {
+            if (chunk.events.length === 0 && !chunk.truncated) return
+            panel.events.set(jobId, {
+              list: state.list.concat(chunk.events),
+              offset: chunk.nextOffset,
+              truncated: state.truncated || chunk.truncated,
+            })
+            bumpRef.current()
+          },
+          onFailure,
+        )
+      }
+
+      const pull = () => {
+        pullEvents()
+        pullText()
       }
 
       pull()
@@ -239,6 +274,7 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
 
     const detail = current ? meta[current.id] : undefined
     const output = current ? panel.outputs.get(current.id) : undefined
+    const events = current ? panel.events.get(current.id) : undefined
     // `revision` is read so the memo-free render tracks the mutable cache.
     void revision
 
@@ -310,11 +346,23 @@ export function createClaudeCodeView(api: ClaudeCodeApi) {
 
               {error !== null ? <div className={CSS.error}>{error}</div> : null}
 
-              <OutputView
-                jobId={current.id}
-                text={output?.text ?? (detail?.finalOutput ?? '')}
-                truncated={output?.truncated ?? false}
-              />
+              {/* The structured stream is the panel's face; the raw text pane
+                  still answers for jobs that produced no events at all (a run
+                  that failed before its first block, or a settled job restored
+                  from `finalOutput`). */}
+              {events !== undefined && events.list.length > 0 ? (
+                <EventView
+                  jobId={current.id}
+                  events={events.list}
+                  truncated={events.truncated}
+                />
+              ) : (
+                <OutputView
+                  jobId={current.id}
+                  text={output?.text ?? (detail?.finalOutput ?? '')}
+                  truncated={output?.truncated ?? false}
+                />
+              )}
 
               <div className={CSS.actions}>
                 {isLive(current) ? (

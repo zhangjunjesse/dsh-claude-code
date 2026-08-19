@@ -86,3 +86,44 @@ export interface ReadOutputResult {
     truncated: boolean;
     status: 'running' | 'completed' | 'failed' | 'killed';
 }
+/**
+ * One structured item of a delegation's message stream (host `ClaudeEvent`).
+ *
+ * The wire is untyped on purpose — the panel re-validates every event in
+ * `api.readEvents` rather than trusting the gateway payload.
+ */
+export type ClaudeEvent = {
+    type: 'text';
+    text: string;
+} | {
+    type: 'thinking';
+    thinking: string;
+    signature?: string;
+} | {
+    type: 'tool_use';
+    id?: string;
+    name: string;
+    input: unknown;
+} | {
+    type: 'tool_result';
+    tool_use_id: string | null;
+    content: string;
+    isError?: boolean;
+} | {
+    type: 'result';
+    text: string;
+    costUsd?: number;
+    numTurns?: number;
+    durationMs?: number;
+    isError?: boolean;
+} | {
+    type: 'warning';
+    text: string;
+};
+/** One incremental event read from `claudeCode/readEvents`. */
+export interface ReadEventsResult {
+    events: ClaudeEvent[];
+    nextOffset: number;
+    truncated: boolean;
+    status: 'running' | 'completed' | 'failed' | 'killed';
+}

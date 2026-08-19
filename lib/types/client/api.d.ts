@@ -7,7 +7,7 @@
  * `{ args: { … } }`; it answers with `{ ok:true, value }` or `{ ok:false, error }`,
  * which is re-validated here rather than trusted.
  */
-import type { ConnectionService, JobInfo, ReadOutputResult } from './types.js';
+import type { ConnectionService, JobInfo, ReadEventsResult, ReadOutputResult } from './types.js';
 /** One wire failure, carrying the gateway's error code when it supplied one. */
 export declare class ClaudeCodeApiError extends Error {
     readonly code: string;
@@ -17,6 +17,7 @@ export declare class ClaudeCodeApiError extends Error {
 export interface ClaudeCodeApi {
     listJobs(sessionId: string, signal?: AbortSignal): Promise<JobInfo[]>;
     readOutput(sessionId: string, jobId: string, fromOffset: number, signal?: AbortSignal): Promise<ReadOutputResult>;
+    readEvents(sessionId: string, jobId: string, fromOffset: number, signal?: AbortSignal): Promise<ReadEventsResult>;
     cancel(sessionId: string, jobId: string): Promise<'requested' | 'already-finished'>;
 }
 /** Bind the API surface to the client runtime's connection service. */

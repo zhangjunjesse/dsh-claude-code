@@ -34,6 +34,14 @@ export declare const zh: {
     'output.follow': string;
     'output.collapse': string;
     'output.expand': string;
+    'events.title': string;
+    'events.empty': string;
+    'events.truncated': string;
+    'events.thinking': string;
+    'events.thinkingLabel': string;
+    'events.toolResult': string;
+    'events.toolError': string;
+    'events.result': string;
     'error.prefix': string;
     'select.empty': string;
 };

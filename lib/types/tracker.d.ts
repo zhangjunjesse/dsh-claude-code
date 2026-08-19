@@ -21,6 +21,68 @@ export interface TrackedRead {
     /** True when the requested offset had already been dropped by the cap. */
     truncated: boolean;
 }
+/**
+ * One structured item of a delegation's message stream, as the monitor panel
+ * renders it. This is a second, independent view of the same run: the text
+ * stream (`TrackedRead`) stays exactly as the model's `job_output` sees it,
+ * while these events carry the block structure the UI needs (tool parameters,
+ * tool results, thinking) — every field plain JSON, no undefined keys.
+ */
+export type ClaudeEvent = {
+    type: 'text';
+    text: string;
+} | {
+    type: 'thinking';
+    thinking: string;
+    signature?: string;
+} | {
+    type: 'tool_use';
+    id?: string;
+    name: string;
+    input: unknown;
+} | {
+    type: 'tool_result';
+    tool_use_id: string | null;
+    content: string;
+    isError?: boolean;
+} | {
+    type: 'result';
+    text: string;
+    costUsd?: number;
+    numTurns?: number;
+    durationMs?: number;
+    isError?: boolean;
+} | {
+    type: 'warning';
+    text: string;
+};
+/** One absolute-offset read of a job's event stream. */
+export interface TrackedEventRead {
+    /** The events between the requested offset and the buffer's end. */
+    events: ClaudeEvent[];
+    /** Absolute offset to pass on the next read. */
+    nextOffset: number;
+    /** True when the requested offset had already been dropped by the cap. */
+    truncated: boolean;
+}
+/**
+ * Append-only ring of structured events addressed by ABSOLUTE index.
+ *
+ * Events are held as JSON lines so a stored event can never alias a live SDK
+ * object and every read hands out a fresh, JSON-safe copy. Reads take an
+ * absolute offset and move no cursor, so the panel, a second window and the
+ * settlement backfill can all follow the same job independently.
+ */
+export interface EventBuffer {
+    /** Append one event; silently degrades a non-serializable event to text. */
+    append(event: ClaudeEvent): void;
+    /** Absolute-offset read; leaves the buffer intact. */
+    read(fromOffset: number): TrackedEventRead;
+    /** Absolute offset just past the newest event. */
+    size(): number;
+}
+/** Create an empty event buffer (one per background delegation). */
+export declare function createEventBuffer(): EventBuffer;
 /** Settlement metadata filled in when a delegation finishes. */
 export interface TrackedSettlement {
     status: Exclude<TrackedStatus, 'running'>;
@@ -45,6 +107,10 @@ export interface TrackedJob {
     finishedAt?: number;
     /** Absolute-offset read of the live buffer; never touches the model's cursor. */
     read(fromOffset: number): TrackedRead;
+    /** Structured event stream of the same run, for the panel's native rendering. */
+    events: EventBuffer;
+    /** Absolute-offset read of the event stream; the cursor lives on the caller. */
+    readEvents(fromOffset: number): TrackedEventRead;
     /** Cancel through the plugin's own abort path; false when already settled. */
     cancelFromUi(): boolean;
     claudeSessionId?: string;
@@ -61,6 +127,8 @@ export interface TrackedRegistration {
     task: string;
     label: string;
     read(fromOffset: number): TrackedRead;
+    /** The job's own event buffer; a fresh one is created when omitted. */
+    events?: EventBuffer;
     cancelFromUi(): boolean;
 }
 /** Wire shape returned by `claudeCode/listJobs` (JSON-safe, no undefined keys). */

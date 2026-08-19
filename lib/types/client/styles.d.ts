@@ -29,6 +29,24 @@ export declare const CSS: {
     readonly outputLine: "ccp-outputLine";
     readonly outputTool: "ccp-outputTool";
     readonly outputNotice: "ccp-outputNotice";
+    readonly events: "ccp-events";
+    readonly eventsBody: "ccp-eventsBody";
+    readonly evText: "ccp-evText";
+    readonly evThinking: "ccp-evThinking";
+    readonly evThinkingHead: "ccp-evThinkingHead";
+    readonly evThinkingBody: "ccp-evThinkingBody";
+    readonly evTool: "ccp-evTool";
+    readonly evToolHead: "ccp-evToolHead";
+    readonly evToolBadge: "ccp-evToolBadge";
+    readonly evToolParams: "ccp-evToolParams";
+    readonly evToolParamsFull: "ccp-evToolParamsFull";
+    readonly evToolResult: "ccp-evToolResult";
+    readonly evToolResultHead: "ccp-evToolResultHead";
+    readonly evToolResultBody: "ccp-evToolResultBody";
+    readonly evToolError: "ccp-evToolError";
+    readonly evResult: "ccp-evResult";
+    readonly evWarning: "ccp-evWarning";
+    readonly evMore: "ccp-evMore";
     readonly follow: "ccp-follow";
     readonly actions: "ccp-actions";
     readonly button: "ccp-button";
@@ -38,5 +56,10 @@ export declare const CSS: {
     readonly error: "ccp-error";
     readonly mono: "ccp-mono";
 };
+/**
+ * Stable tint for one tool name, so `Edit` always reads the same colour within
+ * and across runs. A tiny FNV-ish hash keeps it deterministic and dependency-free.
+ */
+export declare function toolToneClass(name: string): string;
 /** Install the stylesheet once; safe to call on every activation. */
 export declare function installStyles(): void;

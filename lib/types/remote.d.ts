@@ -15,10 +15,17 @@
  */
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { Context } from '@deepseek-ai/cordis';
-import { type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js';
+import { type ClaudeEvent, type JobInfo, type JobTracker, type TrackedStatus } from './tracker.js';
 /** One incremental output read as the panel sees it. */
 export interface ReadOutputResult {
     text: string;
+    nextOffset: number;
+    truncated: boolean;
+    status: TrackedStatus;
+}
+/** One incremental read of the structured event stream. */
+export interface ReadEventsResult {
+    events: ClaudeEvent[];
     nextOffset: number;
     truncated: boolean;
     status: TrackedStatus;
@@ -39,6 +46,13 @@ export declare class ClaudeCodeRemote extends TypertRemoteService {
      * so any number of panels (or windows) can read the same job independently.
      */
     readOutput(sessionId: string, jobId: string, fromOffset: number): Promise<ReadOutputResult>;
+    /**
+     * Incremental structured events from an absolute offset — the same run the
+     * text stream describes, but block-shaped so the panel can render tool cards,
+     * thinking and results natively. Cursor-free like `readOutput`, so reading
+     * here never costs the model's `job_output` bytes.
+     */
+    readEvents(sessionId: string, jobId: string, fromOffset: number): Promise<ReadEventsResult>;
     /**
      * Cancel from the UI. This goes through the plugin's own AbortController, so
      * the job still settles as `killed` and the model still gets its completion
