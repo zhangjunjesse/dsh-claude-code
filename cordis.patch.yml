@@ -1,6 +1,7 @@
 # Bundle wiring for dsh plugin add / registry installs.
 # NOTE: proxy below is a machine-specific default for this dev machine (outbound is a datacenter IP,
 # Anthropic rejects direct requests with 403). Publishing later should drop or comment the proxy line.
+# timeoutMs guards runaway claude sessions; background tasks should allow long runs (1h here).
 - insert:
     - id: claude-code
       name: dsh-claude-code
@@ -8,5 +9,5 @@
         model: sonnet
         permissionMode: acceptEdits
         maxTurns: 100
-        timeoutMs: 600000
+        timeoutMs: 3600000
         proxy: http://127.0.0.1:7897
